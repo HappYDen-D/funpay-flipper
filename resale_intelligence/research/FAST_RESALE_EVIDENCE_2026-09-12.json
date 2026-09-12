@@ -1,0 +1,311 @@
+{
+  "research_date": "2026-09-12",
+  "budget_rub": 1000,
+  "budget_mode": "dynamic; 1000 RUB is maximum initial capital only, not an ongoing ceiling; subsequent limits follow confirmed results and available cash",
+  "excluded_from_pilot": [
+    "active subscriptions",
+    "subscription accounts",
+    "subscription prepaid codes",
+    "promotional subscription codes"
+  ],
+  "target_sale_hours": 24,
+  "maximum_planned_inventory_hours": 72,
+  "execution_enabled": false,
+  "mandatory_demand_gate": "Before purchase, require an independently checked executable buyback quote for the exact SKU, quantity, delivery window and accessible settlement method; alternatively sufficient own settled same-SKU sales within horizon. Public asks and unverified buyback marketing never authorize purchasing.",
+  "current_purchase_allowlist": [],
+  "final_priority_note": "TF2 Ticket, Mann Co Key and Backpack Expander have observed public buy orders, but none has a verified profitable accessible RUB roundtrip. MM2 remains research-only. All subscriptions excluded.",
+  "warning": "Research only. Advertised asks and bids are not verified checkout quotes or completed sales. No route is approved for trading. EUR/RUB and USD/RUB below are indicative CBR conversions, not executable exchange rates.",
+  "fx": {
+    "EUR": "97.8728",
+    "USD": "84.2569",
+    "source": "https://www.cbr.ru/currency_base/daily/?UniDbQuery.Posted=True&UniDbQuery.To=12.09.2026"
+  },
+  "funpay_observations": [
+    {
+      "id": "tf2_funpay_ticket",
+      "label": "TF2 Tour of Duty Ticket, craftability not yet verified",
+      "ask": "0.663351",
+      "currency": "EUR",
+      "source": "https://funpay.com/en/lots/offer?id=62782270",
+      "observed_at_utc": "2026-09-12T10:19:25Z",
+      "status": "research_priority_no_executable_cash_exit",
+      "screen": true
+    },
+    {
+      "id": "tf2_ticket_comparable",
+      "label": "TF2 Tour of Duty Ticket another seller",
+      "ask": "0.784059",
+      "currency": "EUR",
+      "source": "https://funpay.com/en/lots/offer?id=76752709",
+      "observed_at_utc": "2026-09-12T10:19:25Z",
+      "status": "ask_not_exit_bid",
+      "screen": false
+    },
+    {
+      "id": "mm2_icewing",
+      "label": "MM2 Icewing standard knife, trade",
+      "ask": "0.790838",
+      "currency": "EUR",
+      "source": "https://funpay.com/en/lots/offer?id=60420674",
+      "observed_at_utc": "2026-09-12T10:19:29Z",
+      "status": "research_only_no_verified_executable_demand",
+      "screen": true
+    },
+    {
+      "id": "mm2_icewing_comparable",
+      "label": "MM2 Icewing another seller",
+      "ask": "0.839505",
+      "currency": "EUR",
+      "source": "https://funpay.com/en/lots/offer?id=70115061",
+      "observed_at_utc": "2026-09-12T10:19:29Z",
+      "status": "ask_not_exit_bid",
+      "screen": false
+    },
+    {
+      "id": "cs2_banned",
+      "label": "CS2 Prime, explicitly banned",
+      "ask": "6.347861",
+      "currency": "EUR",
+      "source": "https://funpay.com/en/lots/offer?id=76971805",
+      "observed_at_utc": "2026-09-12T09:48:55Z",
+      "status": "reject_banned",
+      "screen": false
+    },
+    {
+      "id": "cs2_prime",
+      "label": "CS2 Prime RU, first mail claimed",
+      "ask": "11.42615",
+      "currency": "EUR",
+      "source": "https://funpay.com/en/lots/offer?id=76828080",
+      "observed_at_utc": "2026-09-12T09:49:38Z",
+      "status": "unverified_ask_above_pilot_cap",
+      "screen": true
+    },
+    {
+      "id": "valorant_eu",
+      "label": "Valorant EU ranked unlocked",
+      "ask": "3.444357",
+      "currency": "EUR",
+      "source": "https://funpay.com/en/lots/offer?id=72062036",
+      "observed_at_utc": "2026-09-12T09:48:59Z",
+      "detail_checked_at_utc": "2026-09-12T09:52:43Z",
+      "status": "reject_this_offer_verification_may_be_required_no_refunds",
+      "screen": true
+    },
+    {
+      "id": "minecraft",
+      "label": "Minecraft Java+Bedrock permanent full-access claim",
+      "ask": "8.253251",
+      "currency": "EUR",
+      "source": "https://funpay.com/en/lots/offer?id=56130215",
+      "observed_at_utc": "2026-09-12T09:49:41Z",
+      "detail_checked_at_utc": "2026-09-12T09:52:45Z",
+      "status": "unverified_control_and_server_bans_above_pilot_cap",
+      "screen": true
+    },
+    {
+      "id": "lol_euw",
+      "label": "LoL EUW level 30 unranked 40K BE claim",
+      "ask": "8.730105",
+      "currency": "EUR",
+      "source": "https://funpay.com/en/lots/offer?id=43750020",
+      "observed_at_utc": "2026-09-12T09:50:25Z",
+      "status": "deprioritize_enforcement_and_budget",
+      "screen": true
+    },
+    {
+      "id": "blox_account",
+      "label": "Blox Fruits max-level Sea 3 account claim",
+      "ask": "1.510791",
+      "currency": "EUR",
+      "source": "https://funpay.com/en/lots/offer?id=76774168",
+      "observed_at_utc": "2026-09-12T09:50:22Z",
+      "detail_checked_at_utc": "2026-09-12T09:52:47Z",
+      "status": "research_only_exact_level_and_control_unknown",
+      "screen": true
+    },
+    {
+      "id": "mm2_iceblaster",
+      "label": "MM2 Iceblaster standard gun, trade",
+      "ask": "1.216686",
+      "currency": "EUR",
+      "source": "https://funpay.com/en/lots/offer?id=75600697",
+      "observed_at_utc": "2026-09-12T09:49:50Z",
+      "detail_checked_at_utc": "2026-09-12T09:52:49Z",
+      "status": "research_only_no_verified_executable_demand",
+      "screen": true
+    },
+    {
+      "id": "mm2_iceblaster_comparable",
+      "label": "MM2 Iceblaster another seller",
+      "ask": "1.370957",
+      "currency": "EUR",
+      "source": "https://funpay.com/en/lots/offer?id=76788724",
+      "observed_at_utc": "2026-09-12T09:49:50Z",
+      "status": "ask_not_exit_bid",
+      "screen": false
+    },
+    {
+      "id": "exitlag_tier3",
+      "label": "ExitLag PC 1 month Tier 3 digital code claim",
+      "ask": "3.891561",
+      "currency": "EUR",
+      "source": "https://funpay.com/en/lots/offer?id=68664611",
+      "observed_at_utc": "2026-09-12T09:52:03Z",
+      "status": "excluded_subscription_user_instruction",
+      "screen": false
+    },
+    {
+      "id": "exitlag_promo",
+      "label": "ExitLag Discord promotional code",
+      "ask": "0.177740",
+      "currency": "EUR",
+      "source": "https://funpay.com/en/lots/offer?id=75044231",
+      "observed_at_utc": "2026-09-12T09:50:28Z",
+      "status": "reject_as_normal_prepaid_comparable",
+      "screen": false
+    },
+    {
+      "id": "terraria",
+      "label": "Terraria PC Steam key, Global claim",
+      "ask": "2.798264",
+      "currency": "EUR",
+      "source": "https://funpay.com/en/lots/offer?id=76008805",
+      "observed_at_utc": "2026-09-12T09:52:06Z",
+      "detail_checked_at_utc": "2026-09-12T09:52:51Z",
+      "status": "region_and_final_price_require_quote",
+      "screen": true
+    },
+    {
+      "id": "tf2_funpay_key",
+      "label": "TF2 Mann Co. Supply Crate Key",
+      "ask": "1.724714",
+      "currency": "EUR",
+      "source": "https://funpay.com/en/lots/offer?id=73318531",
+      "observed_at_utc": "2026-09-12T09:51:14Z",
+      "status": "research_only_delivery_and_cash_exit_unknown",
+      "screen": true
+    }
+  ],
+  "marketplace_tf_books": [
+    {
+      "id": "tf2_key",
+      "sku": "5021;6",
+      "label": "Mann Co. Supply Crate Key",
+      "ask": "1.89",
+      "currency": "USD",
+      "advertised_stock": 26909,
+      "bids": [
+        [
+          "1.85",
+          410
+        ],
+        [
+          "1.84",
+          348
+        ],
+        [
+          "1.82",
+          881
+        ],
+        [
+          "1.80",
+          402
+        ],
+        [
+          "1.78",
+          56
+        ]
+      ],
+      "source": "https://marketplace.tf/items/tf2/5021;6"
+    },
+    {
+      "id": "tf2_ticket",
+      "sku": "725;6",
+      "label": "Tour of Duty Ticket",
+      "ask": "0.84",
+      "currency": "USD",
+      "advertised_stock": 1080,
+      "bids": [
+        [
+          "0.76",
+          5
+        ],
+        [
+          "0.75",
+          10
+        ],
+        [
+          "0.71",
+          18
+        ],
+        [
+          "0.70",
+          50
+        ]
+      ],
+      "source": "https://marketplace.tf/items/tf2/725;6"
+    },
+    {
+      "id": "tf2_expander",
+      "sku": "5050;6",
+      "label": "Backpack Expander craftable",
+      "ask": "1.05",
+      "currency": "USD",
+      "advertised_stock": 137,
+      "bids": [
+        [
+          "0.71",
+          7
+        ]
+      ],
+      "source": "https://marketplace.tf/items/tf2/5050;6"
+    }
+  ],
+  "marketplace_tf_book_note": "Public web pages retrieved 2026-09-12; cached search result for Backpack Expander crawled 2 days earlier. Not synchronized, not executed, no seller enrollment or payout access verified.",
+  "marketplace_tf_seller_fee": "0.10",
+  "marketplace_tf_seller_fee_source": "https://marketplace.tf/",
+  "scrap_tf_key": {
+    "buy_ref": "66.66",
+    "sell_ref": "62.66",
+    "source": "https://scrap.tf/item/mann-co-supply-crate-key"
+  },
+  "stn_key": {
+    "buy_ref": "66.55",
+    "sell_ref": "62.55",
+    "source": "https://stntrading.eu/item/tf2/Mann%20Co.%20Supply%20Crate%20Key"
+  },
+  "own_completed_sales": 0,
+  "qualified_executable_rub_buyback_quotes": 0,
+  "measured_p_sale_24h": null,
+  "measured_p_sale_72h": null,
+  "measured_late_loss_rate": null,
+  "additional_exit_checks": [
+    {
+      "url": "https://funpay.com/en/lots/offer?id=73841866",
+      "status": "lead_only",
+      "reason": "MM2 buying ad: no exact SKU price or quantity"
+    },
+    {
+      "url": "https://tf2key.ru/",
+      "status": "not_qualified",
+      "reason": "Public unloaded quotes zero; FAQ MIR minimum 3000 RUB, SBP minimum 500 RUB up to 168 hours"
+    },
+    {
+      "url": "https://www.clover.tf/ru/sell-tf2-keys",
+      "status": "lead_only",
+      "reason": "Cached reference quote dated 2026-09-07, crypto payout not verified, RUB conversion not verified"
+    },
+    {
+      "url": "https://mm2.cash/sell",
+      "status": "lead_only",
+      "reason": "Exact item price requires account/inventory scan; no qualified pre-purchase quote or independently verified cashout"
+    },
+    {
+      "url": "https://mm2empire.com/en/sell",
+      "status": "lead_only",
+      "reason": "Quick sell claim and 5 percent withdrawal fee; exact executable SKU quote/quantity and user cashout unverified"
+    }
+  ],
+  "initial_budget_max_rub": 1000
+}

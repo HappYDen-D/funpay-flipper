@@ -1,0 +1,323 @@
+{
+  "warning": "Sensitivity research, NOT calibrated probabilities, executable quotes or trading configuration.",
+  "current_budget_rub": "1000",
+  "dynamic_budget_policy_examples": [
+    {
+      "capital": "500",
+      "reserve": "200.0",
+      "inventory_ceiling": "300.0",
+      "lot_concentration_limit": "75.00",
+      "supplier_limit": "125.00",
+      "category_limit": "200.00",
+      "pilot_loss_budget": "50.00",
+      "max_new_purchase_zero_recovery_before_costs": "50.00"
+    },
+    {
+      "capital": "1000",
+      "reserve": "400.0",
+      "inventory_ceiling": "600.0",
+      "lot_concentration_limit": "150.00",
+      "supplier_limit": "250.00",
+      "category_limit": "400.00",
+      "pilot_loss_budget": "100.00",
+      "max_new_purchase_zero_recovery_before_costs": "100.00"
+    },
+    {
+      "capital": "3000",
+      "reserve": "1200.0",
+      "inventory_ceiling": "1800.0",
+      "lot_concentration_limit": "450.00",
+      "supplier_limit": "750.00",
+      "category_limit": "1200.00",
+      "pilot_loss_budget": "300.00",
+      "max_new_purchase_zero_recovery_before_costs": "300.00"
+    }
+  ],
+  "book_roundtrips": [
+    {
+      "id": "tf2_key",
+      "ask_usd": "1.89",
+      "best_bid_usd": "1.85",
+      "net_bid_usd_before_payout": "1.6650",
+      "profit_usd_before_payout": "-0.2250",
+      "roi_pct_before_payout": "-11.90476190476190476190476190",
+      "break_even_purchase_usd_before_other_costs": "1.6650",
+      "purchase_cap_usd_at_15pct_roi_before_other_costs": "1.44"
+    },
+    {
+      "id": "tf2_ticket",
+      "ask_usd": "0.84",
+      "best_bid_usd": "0.76",
+      "net_bid_usd_before_payout": "0.6840",
+      "profit_usd_before_payout": "-0.1560",
+      "roi_pct_before_payout": "-18.57142857142857142857142857",
+      "break_even_purchase_usd_before_other_costs": "0.6840",
+      "purchase_cap_usd_at_15pct_roi_before_other_costs": "0.59"
+    },
+    {
+      "id": "tf2_expander",
+      "ask_usd": "1.05",
+      "best_bid_usd": "0.71",
+      "net_bid_usd_before_payout": "0.6390",
+      "profit_usd_before_payout": "-0.4110",
+      "roi_pct_before_payout": "-39.14285714285714285714285714",
+      "break_even_purchase_usd_before_other_costs": "0.6390",
+      "purchase_cap_usd_at_15pct_roi_before_other_costs": "0.55"
+    }
+  ],
+  "scrap_key_roundtrip_loss_pct": "-6.000600060006000600060006000",
+  "stn_to_scrap_best_observed_roundtrip_loss_pct": "-5.845229151014274981217129980",
+  "ticket_20_units": {
+    "gross_exit_usd": "14.85",
+    "net_exit_usd": "13.3650",
+    "purchase_usd": "16.8",
+    "profit_usd_before_payout": "-3.4350"
+  },
+  "screen_assumptions": {
+    "intake_failure_u": "0.05",
+    "early_failure_q_conditional_sale": "0.05",
+    "late_failure_d_conditional_success": "0.10",
+    "operating_cost_rub": "25",
+    "min_profit_rub": "30",
+    "min_roi": "0.15",
+    "assumed_buyer_markup_over_seller_net": "0.12",
+    "terminal_recovery_all_failure_states": 0
+  },
+  "funpay_sensitivity_screen": [
+    {
+      "id": "tf2_funpay_ticket",
+      "indicative_ask_rub": "64.92",
+      "assumed_seller_net_rub": "57.96",
+      "purchase_caps_rub_by_assumed_p": {
+        "0.5": "0.00",
+        "0.8": "0.00",
+        "1": "0.00"
+      },
+      "discount_pct_at_p_08": "100"
+    },
+    {
+      "id": "mm2_icewing",
+      "indicative_ask_rub": "77.40",
+      "assumed_seller_net_rub": "69.10",
+      "purchase_caps_rub_by_assumed_p": {
+        "0.5": "0.00",
+        "0.8": "0.00",
+        "1": "1.13"
+      },
+      "discount_pct_at_p_08": "100"
+    },
+    {
+      "id": "cs2_prime",
+      "indicative_ask_rub": "1118.30",
+      "assumed_seller_net_rub": "998.49",
+      "purchase_caps_rub_by_assumed_p": {
+        "0.5": "330.87",
+        "0.8": "542.45",
+        "1": "683.49"
+      },
+      "discount_pct_at_p_08": "51.49374121755107897807947764"
+    },
+    {
+      "id": "valorant_eu",
+      "indicative_ask_rub": "337.10",
+      "assumed_seller_net_rub": "300.99",
+      "purchase_caps_rub_by_assumed_p": {
+        "0.5": "67.23",
+        "0.8": "140.58",
+        "1": "189.47"
+      },
+      "discount_pct_at_p_08": "58.29833768840314519181560811"
+    },
+    {
+      "id": "minecraft",
+      "indicative_ask_rub": "807.76",
+      "assumed_seller_net_rub": "721.22",
+      "purchase_caps_rub_by_assumed_p": {
+        "0.5": "232.96",
+        "0.8": "385.78",
+        "1": "487.66"
+      },
+      "discount_pct_at_p_08": "52.24128396447209198120930966"
+    },
+    {
+      "id": "lol_euw",
+      "indicative_ask_rub": "854.43",
+      "assumed_seller_net_rub": "762.89",
+      "purchase_caps_rub_by_assumed_p": {
+        "0.5": "247.67",
+        "0.8": "409.32",
+        "1": "517.09"
+      },
+      "discount_pct_at_p_08": "52.09492931971600471300938779"
+    },
+    {
+      "id": "blox_account",
+      "indicative_ask_rub": "147.86",
+      "assumed_seller_net_rub": "132.02",
+      "purchase_caps_rub_by_assumed_p": {
+        "0.5": "0.00",
+        "0.8": "30.78",
+        "1": "52.23"
+      },
+      "discount_pct_at_p_08": "79.18376349786413987687161569"
+    },
+    {
+      "id": "mm2_iceblaster",
+      "indicative_ask_rub": "119.08",
+      "assumed_seller_net_rub": "106.32",
+      "purchase_caps_rub_by_assumed_p": {
+        "0.5": "0.00",
+        "0.8": "14.08",
+        "1": "31.35"
+      },
+      "discount_pct_at_p_08": "88.17606234905435985349404028"
+    },
+    {
+      "id": "terraria",
+      "indicative_ask_rub": "273.87",
+      "assumed_seller_net_rub": "244.53",
+      "purchase_caps_rub_by_assumed_p": {
+        "0.5": "44.30",
+        "0.8": "103.89",
+        "1": "143.61"
+      },
+      "discount_pct_at_p_08": "62.06648842751172346034888834"
+    },
+    {
+      "id": "tf2_funpay_key",
+      "indicative_ask_rub": "168.80",
+      "assumed_seller_net_rub": "150.71",
+      "purchase_caps_rub_by_assumed_p": {
+        "0.5": "6.20",
+        "0.8": "42.93",
+        "1": "67.41"
+      },
+      "discount_pct_at_p_08": "74.56792552045376604441592990"
+    }
+  ],
+  "low_cost_items_sensitivity": {
+    "warning": "Optimistic hypothetical costs/risks, not calibrated or approved. Unknown sale probabilities cannot authorize buying.",
+    "u_q_d_each": ".02",
+    "cost_rub": 5,
+    "minimum_profit_rub": 10,
+    "roi": ".15",
+    "salvage": 0,
+    "rows": [
+      {
+        "id": "tf2_funpay_ticket",
+        "caps_by_assumed_p": {
+          "0.5": {
+            "economic_cap": "12.27",
+            "budget_capped": "12.27"
+          },
+          "0.8": {
+            "economic_cap": "28.64",
+            "budget_capped": "28.64"
+          },
+          "1": {
+            "economic_cap": "39.55",
+            "budget_capped": "39.55"
+          }
+        }
+      },
+      {
+        "id": "mm2_icewing",
+        "caps_by_assumed_p": {
+          "0.5": {
+            "economic_cap": "17.52",
+            "budget_capped": "17.52"
+          },
+          "0.8": {
+            "economic_cap": "37.03",
+            "budget_capped": "37.03"
+          },
+          "1": {
+            "economic_cap": "50.04",
+            "budget_capped": "50.04"
+          }
+        }
+      },
+      {
+        "id": "mm2_iceblaster",
+        "caps_by_assumed_p": {
+          "0.5": {
+            "economic_cap": "35.03",
+            "budget_capped": "35.03"
+          },
+          "0.8": {
+            "economic_cap": "65.05",
+            "budget_capped": "65.05"
+          },
+          "1": {
+            "economic_cap": "82.66",
+            "budget_capped": "82.66"
+          }
+        }
+      },
+      {
+        "id": "tf2_funpay_key",
+        "caps_by_assumed_p": {
+          "0.5": {
+            "economic_cap": "55.92",
+            "budget_capped": "55.92"
+          },
+          "0.8": {
+            "economic_cap": "94.33",
+            "budget_capped": "94.33"
+          },
+          "1": {
+            "economic_cap": "119.00",
+            "budget_capped": "95.00"
+          }
+        }
+      }
+    ]
+  },
+  "ask_to_next_ask_illusion": [
+    {
+      "buy_id": "tf2_funpay_ticket",
+      "hypothetical_exit_ask_id": "tf2_ticket_comparable",
+      "buy_indicative_rub": "64.92",
+      "hypothetical_profit_rub_before_risk": "-1.41"
+    },
+    {
+      "buy_id": "mm2_icewing",
+      "hypothetical_exit_ask_id": "mm2_icewing_comparable",
+      "buy_indicative_rub": "77.40",
+      "hypothetical_profit_rub_before_risk": "-9.05"
+    },
+    {
+      "buy_id": "mm2_iceblaster",
+      "hypothetical_exit_ask_id": "mm2_iceblaster_comparable",
+      "buy_indicative_rub": "119.08",
+      "hypothetical_profit_rub_before_risk": "-4.28"
+    }
+  ],
+  "worked_example": {
+    "N": "500",
+    "B": "300",
+    "c": "25",
+    "ev_at_p_08": "-0.1000000",
+    "p_break_even": "0.8002462296091104955370883349",
+    "p_for_both_targets": "0.9110495537088334872268390274"
+  },
+  "wilson_one_sided_95pct": {
+    "9/10": 0.6522813326641418,
+    "10/10": 0.7870580299165931,
+    "18/20": 0.7383369536731331,
+    "27/30": 0.7744975205091514,
+    "28/30": 0.8172844371249125
+  },
+  "zero_failure_exact_one_sided_95pct_upper": {
+    "10": 0.2588655508930523,
+    "30": 0.09503385285530419,
+    "59": 0.049507609888227
+  },
+  "illustrative_unit_capital_days": {
+    "buy_rub": 300,
+    "profit_rub": 50,
+    "cycle_6h_profit_per_capital_day": "0.6666666666666666666666666667",
+    "cycle_54h_profit_per_capital_day": "0.07407407407407407407407407407"
+  },
+  "validation": "5 calculation invariants passed; not a market or live-trading test"
+}

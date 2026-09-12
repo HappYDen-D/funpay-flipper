@@ -1,0 +1,31 @@
+{
+  "sku": "",
+  "source": "",
+  "supplier_group": "",
+  "purchase_currency": "RUB",
+  "route_cost": null,
+  "estimated_execution_seconds": null,
+  "product": {
+    "kind": "trade_item",
+    "sku": "",
+    "expires_at": null,
+    "transfer_method": "manual",
+    "transfer_ready_at": 0
+  },
+  "exit_quote": {
+    "schema_version": 1,
+    "quote_id": "",
+    "sku": "",
+    "buyer_id": "",
+    "source": "",
+    "observed_at": 0,
+    "expires_at": 0,
+    "quantity": 0,
+    "unit_net_receipt": null,
+    "settlement_currency": "RUB",
+    "settlement_hours": null,
+    "transfer_verified": false,
+    "payout_verified": false,
+    "executable": false
+  }
+}

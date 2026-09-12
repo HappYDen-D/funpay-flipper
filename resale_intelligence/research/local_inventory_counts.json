@@ -1,0 +1,34 @@
+{
+  "observed_date": "2026-09-11",
+  "read_only": true,
+  "groups": [
+    {
+      "status": "sold",
+      "is_dry_run": 0,
+      "category_id": "chatgpt",
+      "count": 15
+    },
+    {
+      "status": "sold",
+      "is_dry_run": 1,
+      "category_id": "chatgpt",
+      "count": 58
+    },
+    {
+      "status": "sold",
+      "is_dry_run": 1,
+      "category_id": "steam",
+      "count": 7
+    }
+  ],
+  "limitation": "sold is local delivery status, not independently verified settlement",
+  "live_flag_aggregates": {
+    "count": 15,
+    "earliest_purchase": "2026-09-11T12:03:49.712061",
+    "latest_marked_sold": null,
+    "sum_buy": 3750.0,
+    "sum_stored_pnl": 0.0,
+    "with_buyer_order": 0,
+    "sim_prefix_purchase_orders": 0
+  }
+}

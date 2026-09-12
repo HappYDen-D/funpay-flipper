@@ -1,0 +1,98 @@
+{
+  "as_of": "2026-09-11",
+  "status": "illustrative_assumptions_not_empirical",
+  "horizon_days": 14,
+  "formula": "a=p*(1-q)*(1-d); Bmax=min(a*N-c-m,(a*N-c)/(1+rho))",
+  "assumptions": {
+    "unsold_recovery": "0",
+    "supplier_cash_recovery": "0",
+    "late_refund_amount": "N",
+    "costs": "5 RUB + 0.02*N",
+    "minimum_expected_profit_rub": "10",
+    "minimum_expected_roi": "0.20"
+  },
+  "rounding": "purchase ceilings rounded down to kopecks",
+  "scenarios": [
+    {
+      "name": "illustrative_base",
+      "sale_probability": "0.85",
+      "early_defect_conditional": "0.03",
+      "late_refund_conditional": "0.01",
+      "retained_sale_probability": "0.816255",
+      "rows": [
+        {
+          "seller_net_rub": "100",
+          "costs_rub": "7.00",
+          "max_buyer_debit_rub": "62.18"
+        },
+        {
+          "seller_net_rub": "300",
+          "costs_rub": "11.00",
+          "max_buyer_debit_rub": "194.89"
+        },
+        {
+          "seller_net_rub": "700",
+          "costs_rub": "19.00",
+          "max_buyer_debit_rub": "460.31"
+        },
+        {
+          "seller_net_rub": "1500",
+          "costs_rub": "35.00",
+          "max_buyer_debit_rub": "991.15"
+        }
+      ]
+    },
+    {
+      "name": "illustrative_stress",
+      "sale_probability": "0.65",
+      "early_defect_conditional": "0.08",
+      "late_refund_conditional": "0.03",
+      "retained_sale_probability": "0.580060",
+      "rows": [
+        {
+          "seller_net_rub": "100",
+          "costs_rub": "7.00",
+          "max_buyer_debit_rub": "41.00"
+        },
+        {
+          "seller_net_rub": "300",
+          "costs_rub": "11.00",
+          "max_buyer_debit_rub": "135.84"
+        },
+        {
+          "seller_net_rub": "700",
+          "costs_rub": "19.00",
+          "max_buyer_debit_rub": "322.53"
+        },
+        {
+          "seller_net_rub": "1500",
+          "costs_rub": "35.00",
+          "max_buyer_debit_rub": "695.90"
+        }
+      ]
+    }
+  ],
+  "capital_example_rub": {
+    "capital": "350.00",
+    "reserve": "52.50",
+    "lot_limit": "52.50",
+    "supplier_limit": "87.50",
+    "category_limit": "140.00"
+  },
+  "internal_spread_example": {
+    "currency": "EUR",
+    "hypothetical_buyer_debit": "5.74",
+    "hypothetical_resale_buyer_gross": "6.22",
+    "same_sku_verified": false,
+    "fee_verified": false,
+    "markup_percent": "8.362369337979094076655052300",
+    "break_even_deduction_percent": "7.717041800643086816720257230",
+    "profit_at_hypothetical_8_percent_deduction_eur": "-0.0176"
+  },
+  "zero_defect_one_sided_95_percent_upper_bound": {
+    "formula": "1 - 0.05**(1/n)",
+    "assumes_independent_fully_observed_orders": true,
+    "n_30": 0.09503385285530419,
+    "n_100": 0.029513049607039932
+  }
+}

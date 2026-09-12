@@ -1,0 +1,4 @@
+# Runtime dependencies; update the hashed lock with the command in README.md.
+aiogram==3.31.0
+aiohttp-socks==0.12.0
+httpx[socks]==0.28.1

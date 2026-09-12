@@ -1,0 +1,22 @@
+=====================================================================================
+                    AUTONOMOUS FLIPPER COMPOUNDING SIMULATION
+                  Starting Capital: 350 RUB | FunPay 48h Hold Active
+=====================================================================================
+Day   | Cash (Avail)  | In 48h Hold  | Active Inv  | Net Worth   | Sales  | Realized PnL 
+-----------------------------------------------------------------------------------------
+Day 1 |     15.00 RUB |  1411.52 RUB |    0.00 RUB |  1426.52 RUB |    16 | +  1076.52 RUB
+Day 2 |     15.00 RUB |  1411.52 RUB |    0.00 RUB |  1426.52 RUB |    16 | +  1076.52 RUB
+Day 3 |    106.52 RUB |  5507.92 RUB |   25.00 RUB |  5639.44 RUB |    68 | +  5289.44 RUB
+  >>> [MILESTONE] STAGE 1 ACHIEVED (1,500 RUB Net Worth) on Day 3! Unlocking ExitLag & Tg Premium.
+  >>> [MILESTONE] STAGE 2 ACHIEVED (5,000 RUB Net Worth) on Day 3! Activating ChatGPT Plus Wholesale.
+Day 4 |    106.52 RUB |  5639.04 RUB |    0.00 RUB |  5745.56 RUB |    69 | +  5395.56 RUB
+Day 5 |    354.44 RUB | 12875.28 RUB |  300.00 RUB | 13529.72 RUB |   150 | + 13179.72 RUB
+Day 6 |    105.56 RUB | 15750.24 RUB |    0.00 RUB | 15855.80 RUB |   174 | + 15505.80 RUB
+=====================================================================================
+Total Simulation Runtime : 6 days (162 hours)
+Total Items Sold         : 269 digital products
+Defective Losses Absorbed: 11 items (4.1% defect rate)
+Final Available Cash     : 3164.72 RUB
+Final Matured Hold       : 21602.24 RUB
+Final Total Net Worth    : 25351.96 RUB
+=====================================================================================

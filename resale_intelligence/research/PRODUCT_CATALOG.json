@@ -1,0 +1,580 @@
+{
+  "schema_version": 1,
+  "as_of": "2026-09-11",
+  "purpose": "research_candidates_not_trading_allowlist",
+  "live_trading_enabled": false,
+  "report": "PRODUCT_SHORTLIST.md",
+  "sources": {
+    "exitlag_program": "https://www.exitlag.com/knowledgebase/514/%E6%88%90%E7%82%BA%E7%B6%93%E9%8A%B7%E5%95%86%E9%9C%80%E8%A6%81%E5%81%9A%E4%BB%80%E9%BA%BC.html",
+    "exitlag_market": "https://funpay.com/en/lots/1568/",
+    "terraria_market": "https://funpay.com/en/lots/1587/",
+    "dst_market": "https://funpay.com/en/lots/3130/",
+    "steam_keys": "https://partner.steamgames.com/doc/features/keys",
+    "adguard_program": "https://adguardpartner.com/en/welcome.html",
+    "adguard_product": "https://adguard.com/en/license.html",
+    "adguard_devices": "https://adguard.com/en/support/license_questions/different_systems.html",
+    "drweb_program": "https://partners.drweb.ru/resellers/",
+    "drweb_distributors": "https://partners.drweb.ru/distributors/find/",
+    "drweb_retail": "https://store.softline.ru/drweb/drweb-security-space/",
+    "enaza": "https://enaza.games/",
+    "genba": "https://genbadigital.com/retailers",
+    "ztorm": "https://ztorm.com/",
+    "xsolla": "https://xsolla.com/for/resellers/"
+  },
+  "products": [
+    {
+      "candidate_id": "exitlag_pc_30_ru",
+      "research_priority": 1,
+      "name": "ExitLag PC, 30 days, RU",
+      "stage": "observe_first",
+      "decision": "REVIEW",
+      "auto_buy_allowed": false,
+      "executable_sku_complete": false,
+      "target": {
+        "platform": "PC",
+        "product_type": "prepaid_code",
+        "duration_days": 30,
+        "duration_label": "30 days",
+        "devices": null,
+        "target_customer_region": "RU",
+        "region_verified": false,
+        "package_id": null,
+        "remaining_validity": null,
+        "eligibility_verified": false
+      },
+      "purchase_channels": {
+        "funpay": {
+          "consider": true,
+          "supplier_verified": false,
+          "market_url": "https://funpay.com/en/lots/1568/"
+        },
+        "external": {
+          "consider": true,
+          "supplier_leads": [
+            "exitlag_program"
+          ],
+          "exact_sku_supply_confirmed": false
+        }
+      },
+      "sale_channel": {
+        "platform": "FunPay",
+        "category_observed": true,
+        "url": "https://funpay.com/en/lots/1568/",
+        "listing_approved": false
+      },
+      "economics": {
+        "verified_buyer_debit_rub": null,
+        "verified_seller_net_rub": null,
+        "measured_sale_probability": null,
+        "measured_defect_rate": null,
+        "expected_profit_rub": null,
+        "fits_350_rub_pilot": "not_demonstrated"
+      },
+      "rights": {
+        "resale_chain_verified": false,
+        "funpay_channel_permission_verified": false
+      },
+      "blockers": [
+        "source_and_resale_conditions",
+        "executable_purchase_quote",
+        "net_sale_proceeds",
+        "sku_restrictions",
+        "measured_outcomes",
+        "capital_gate"
+      ],
+      "sources": [
+        "exitlag_program",
+        "exitlag_market"
+      ]
+    },
+    {
+      "candidate_id": "exitlag_mobile_30_ru",
+      "research_priority": 2,
+      "name": "ExitLag Mobile, 30 days, RU",
+      "stage": "observe_first",
+      "decision": "REVIEW",
+      "auto_buy_allowed": false,
+      "executable_sku_complete": false,
+      "target": {
+        "platform": "Mobile",
+        "product_type": "prepaid_code",
+        "duration_days": 30,
+        "duration_label": "30 days",
+        "devices": null,
+        "target_customer_region": "RU",
+        "region_verified": false,
+        "package_id": null,
+        "remaining_validity": null,
+        "eligibility_verified": false
+      },
+      "purchase_channels": {
+        "funpay": {
+          "consider": true,
+          "supplier_verified": false,
+          "market_url": "https://funpay.com/en/lots/1568/"
+        },
+        "external": {
+          "consider": true,
+          "supplier_leads": [
+            "exitlag_program"
+          ],
+          "exact_sku_supply_confirmed": false
+        }
+      },
+      "sale_channel": {
+        "platform": "FunPay",
+        "category_observed": true,
+        "url": "https://funpay.com/en/lots/1568/",
+        "listing_approved": false
+      },
+      "economics": {
+        "verified_buyer_debit_rub": null,
+        "verified_seller_net_rub": null,
+        "measured_sale_probability": null,
+        "measured_defect_rate": null,
+        "expected_profit_rub": null,
+        "fits_350_rub_pilot": "not_demonstrated"
+      },
+      "rights": {
+        "resale_chain_verified": false,
+        "funpay_channel_permission_verified": false
+      },
+      "blockers": [
+        "source_and_resale_conditions",
+        "executable_purchase_quote",
+        "net_sale_proceeds",
+        "sku_restrictions",
+        "measured_outcomes",
+        "capital_gate"
+      ],
+      "sources": [
+        "exitlag_program",
+        "exitlag_market"
+      ]
+    },
+    {
+      "candidate_id": "terraria_steam_base_ru",
+      "research_priority": 3,
+      "name": "Terraria, Steam, base game, RU activation",
+      "stage": "verify_supply",
+      "decision": "REVIEW",
+      "auto_buy_allowed": false,
+      "executable_sku_complete": false,
+      "target": {
+        "platform": "Steam",
+        "product_type": "retail_key",
+        "duration_days": null,
+        "duration_label": "base game",
+        "devices": null,
+        "target_customer_region": "RU",
+        "region_verified": false,
+        "package_id": null,
+        "remaining_validity": null,
+        "eligibility_verified": false
+      },
+      "purchase_channels": {
+        "funpay": {
+          "consider": true,
+          "supplier_verified": false,
+          "market_url": "https://funpay.com/en/lots/1587/"
+        },
+        "external": {
+          "consider": true,
+          "supplier_leads": [
+            "enaza",
+            "genba",
+            "ztorm"
+          ],
+          "exact_sku_supply_confirmed": false
+        }
+      },
+      "sale_channel": {
+        "platform": "FunPay",
+        "category_observed": true,
+        "url": "https://funpay.com/en/lots/1587/",
+        "listing_approved": false
+      },
+      "economics": {
+        "verified_buyer_debit_rub": null,
+        "verified_seller_net_rub": null,
+        "measured_sale_probability": null,
+        "measured_defect_rate": null,
+        "expected_profit_rub": null,
+        "fits_350_rub_pilot": "not_demonstrated"
+      },
+      "rights": {
+        "resale_chain_verified": false,
+        "funpay_channel_permission_verified": false
+      },
+      "blockers": [
+        "source_and_resale_conditions",
+        "executable_purchase_quote",
+        "net_sale_proceeds",
+        "sku_restrictions",
+        "measured_outcomes",
+        "capital_gate"
+      ],
+      "sources": [
+        "enaza",
+        "genba",
+        "ztorm",
+        "terraria_market",
+        "steam_keys"
+      ]
+    },
+    {
+      "candidate_id": "dst_steam_base_ru",
+      "research_priority": 4,
+      "name": "Don't Starve Together, Steam, base game, RU activation",
+      "stage": "verify_supply",
+      "decision": "REVIEW",
+      "auto_buy_allowed": false,
+      "executable_sku_complete": false,
+      "target": {
+        "platform": "Steam",
+        "product_type": "retail_key",
+        "duration_days": null,
+        "duration_label": "base game",
+        "devices": null,
+        "target_customer_region": "RU",
+        "region_verified": false,
+        "package_id": null,
+        "remaining_validity": null,
+        "eligibility_verified": false
+      },
+      "purchase_channels": {
+        "funpay": {
+          "consider": true,
+          "supplier_verified": false,
+          "market_url": "https://funpay.com/en/lots/3130/"
+        },
+        "external": {
+          "consider": true,
+          "supplier_leads": [
+            "enaza",
+            "genba",
+            "ztorm"
+          ],
+          "exact_sku_supply_confirmed": false
+        }
+      },
+      "sale_channel": {
+        "platform": "FunPay",
+        "category_observed": true,
+        "url": "https://funpay.com/en/lots/3130/",
+        "listing_approved": false
+      },
+      "economics": {
+        "verified_buyer_debit_rub": null,
+        "verified_seller_net_rub": null,
+        "measured_sale_probability": null,
+        "measured_defect_rate": null,
+        "expected_profit_rub": null,
+        "fits_350_rub_pilot": "not_demonstrated"
+      },
+      "rights": {
+        "resale_chain_verified": false,
+        "funpay_channel_permission_verified": false
+      },
+      "blockers": [
+        "source_and_resale_conditions",
+        "executable_purchase_quote",
+        "net_sale_proceeds",
+        "sku_restrictions",
+        "measured_outcomes",
+        "capital_gate"
+      ],
+      "sources": [
+        "enaza",
+        "genba",
+        "ztorm",
+        "dst_market",
+        "steam_keys"
+      ]
+    },
+    {
+      "candidate_id": "adguard_personal_lifetime",
+      "research_priority": 5,
+      "name": "AdGuard Ad Blocker Personal, 3 devices, lifetime",
+      "stage": "expansion",
+      "decision": "REVIEW",
+      "auto_buy_allowed": false,
+      "executable_sku_complete": false,
+      "target": {
+        "platform": "Multi-platform",
+        "product_type": "whole_license",
+        "duration_days": null,
+        "duration_label": "lifetime",
+        "devices": 3,
+        "target_customer_region": "RU",
+        "region_verified": false,
+        "package_id": null,
+        "remaining_validity": null,
+        "eligibility_verified": false
+      },
+      "purchase_channels": {
+        "funpay": {
+          "consider": true,
+          "supplier_verified": false,
+          "market_url": null
+        },
+        "external": {
+          "consider": true,
+          "supplier_leads": [
+            "adguard_program"
+          ],
+          "exact_sku_supply_confirmed": false
+        }
+      },
+      "sale_channel": {
+        "platform": "FunPay",
+        "category_observed": false,
+        "url": null,
+        "listing_approved": false
+      },
+      "economics": {
+        "verified_buyer_debit_rub": null,
+        "verified_seller_net_rub": null,
+        "measured_sale_probability": null,
+        "measured_defect_rate": null,
+        "expected_profit_rub": null,
+        "fits_350_rub_pilot": "not_demonstrated"
+      },
+      "rights": {
+        "resale_chain_verified": false,
+        "funpay_channel_permission_verified": false
+      },
+      "blockers": [
+        "source_and_resale_conditions",
+        "executable_purchase_quote",
+        "net_sale_proceeds",
+        "sku_restrictions",
+        "measured_outcomes",
+        "capital_gate",
+        "funpay_category"
+      ],
+      "sources": [
+        "adguard_program",
+        "adguard_product",
+        "adguard_devices"
+      ],
+      "standard_program_initial_moq": 50,
+      "moq_negotiable_claim": true,
+      "supplier_cash_refund_assumed": false
+    },
+    {
+      "candidate_id": "adguard_family_lifetime",
+      "research_priority": 6,
+      "name": "AdGuard Ad Blocker Family, 9 devices, lifetime",
+      "stage": "expansion",
+      "decision": "REVIEW",
+      "auto_buy_allowed": false,
+      "executable_sku_complete": false,
+      "target": {
+        "platform": "Multi-platform",
+        "product_type": "whole_license",
+        "duration_days": null,
+        "duration_label": "lifetime",
+        "devices": 9,
+        "target_customer_region": "RU",
+        "region_verified": false,
+        "package_id": null,
+        "remaining_validity": null,
+        "eligibility_verified": false
+      },
+      "purchase_channels": {
+        "funpay": {
+          "consider": true,
+          "supplier_verified": false,
+          "market_url": null
+        },
+        "external": {
+          "consider": true,
+          "supplier_leads": [
+            "adguard_program"
+          ],
+          "exact_sku_supply_confirmed": false
+        }
+      },
+      "sale_channel": {
+        "platform": "FunPay",
+        "category_observed": false,
+        "url": null,
+        "listing_approved": false
+      },
+      "economics": {
+        "verified_buyer_debit_rub": null,
+        "verified_seller_net_rub": null,
+        "measured_sale_probability": null,
+        "measured_defect_rate": null,
+        "expected_profit_rub": null,
+        "fits_350_rub_pilot": "not_demonstrated"
+      },
+      "rights": {
+        "resale_chain_verified": false,
+        "funpay_channel_permission_verified": false
+      },
+      "blockers": [
+        "source_and_resale_conditions",
+        "executable_purchase_quote",
+        "net_sale_proceeds",
+        "sku_restrictions",
+        "measured_outcomes",
+        "capital_gate",
+        "funpay_category"
+      ],
+      "sources": [
+        "adguard_program",
+        "adguard_product",
+        "adguard_devices"
+      ],
+      "standard_program_initial_moq": 50,
+      "moq_negotiable_claim": true,
+      "supplier_cash_refund_assumed": false
+    },
+    {
+      "candidate_id": "drweb_ss_1pc_1y_ru",
+      "research_priority": 7,
+      "name": "Dr.Web Security Space, new electronic license, 1 PC, 1 year, RU",
+      "stage": "expansion",
+      "decision": "REVIEW",
+      "auto_buy_allowed": false,
+      "executable_sku_complete": false,
+      "target": {
+        "platform": "PC",
+        "product_type": "whole_license",
+        "duration_days": null,
+        "duration_label": "1 year",
+        "devices": 1,
+        "target_customer_region": "RU",
+        "region_verified": false,
+        "package_id": null,
+        "remaining_validity": null,
+        "eligibility_verified": false,
+        "manufacturer_part_number": "LHW-BK-12M-1-A3"
+      },
+      "purchase_channels": {
+        "funpay": {
+          "consider": true,
+          "supplier_verified": false,
+          "market_url": null
+        },
+        "external": {
+          "consider": true,
+          "supplier_leads": [
+            "drweb_distributors"
+          ],
+          "exact_sku_supply_confirmed": false
+        }
+      },
+      "sale_channel": {
+        "platform": "FunPay",
+        "category_observed": false,
+        "url": null,
+        "listing_approved": false
+      },
+      "economics": {
+        "verified_buyer_debit_rub": null,
+        "verified_seller_net_rub": null,
+        "measured_sale_probability": null,
+        "measured_defect_rate": null,
+        "expected_profit_rub": null,
+        "fits_350_rub_pilot": "not_demonstrated"
+      },
+      "rights": {
+        "resale_chain_verified": false,
+        "funpay_channel_permission_verified": false
+      },
+      "blockers": [
+        "source_and_resale_conditions",
+        "executable_purchase_quote",
+        "net_sale_proceeds",
+        "sku_restrictions",
+        "measured_outcomes",
+        "capital_gate",
+        "funpay_category"
+      ],
+      "sources": [
+        "drweb_distributors",
+        "drweb_program",
+        "drweb_retail"
+      ]
+    }
+  ],
+  "public_observations": [
+    {
+      "seller": "shiqu",
+      "candidate_id": "exitlag_pc_30_ru",
+      "displayed_price": "5.74",
+      "currency": "EUR",
+      "observed_date": "2026-09-11",
+      "price_basis": "public_display_not_checkout_verified",
+      "region": "RU included, seller claim",
+      "source": "exitlag_market",
+      "sku_match_verified": false,
+      "stock_verified": false,
+      "eligible_for_purchase": false
+    },
+    {
+      "seller": "SedFamous",
+      "candidate_id": "exitlag_pc_30_ru",
+      "displayed_price": "6.22",
+      "currency": "EUR",
+      "observed_date": "2026-09-11",
+      "price_basis": "public_display_not_checkout_verified",
+      "region": "RU, seller claim",
+      "source": "exitlag_market",
+      "sku_match_verified": false,
+      "stock_verified": false,
+      "eligible_for_purchase": false
+    },
+    {
+      "seller": "ZeVsiX11",
+      "candidate_id": "exitlag_pc_30_ru",
+      "displayed_price": "7.11",
+      "currency": "EUR",
+      "observed_date": "2026-09-11",
+      "price_basis": "public_display_not_checkout_verified",
+      "region": "RU included, seller claim",
+      "source": "exitlag_market",
+      "sku_match_verified": false,
+      "stock_verified": false,
+      "eligible_for_purchase": false
+    },
+    {
+      "seller": "SedFamous",
+      "candidate_id": "exitlag_mobile_30_ru",
+      "displayed_price": "3.31",
+      "currency": "EUR",
+      "observed_date": "2026-09-11",
+      "price_basis": "public_display_not_checkout_verified",
+      "region": "RU included, seller claim",
+      "source": "exitlag_market",
+      "sku_match_verified": false,
+      "stock_verified": false,
+      "eligible_for_purchase": false
+    },
+    {
+      "seller": "Chikibriki1234",
+      "candidate_id": "exitlag_mobile_30_ru",
+      "displayed_price": "3.56",
+      "currency": "EUR",
+      "observed_date": "2026-09-11",
+      "price_basis": "public_display_not_checkout_verified",
+      "region": "unknown",
+      "source": "exitlag_market",
+      "sku_match_verified": false,
+      "stock_verified": false,
+      "eligible_for_purchase": false
+    }
+  ],
+  "omitted_forecasts": [
+    "monthly_profit",
+    "commercial_success_probability",
+    "daily_sales"
+  ],
+  "note": "Supplier program existence does not verify exact SKU availability, regional eligibility or FunPay resale authorization.",
+  "commercial_priority_status": "reserve_catalog_superseded_by_account_research",
+  "current_priority_document": "ACCOUNT_RESALE_MODEL.md",
+  "products_role": "reserve_key_and_license_candidates"
+}

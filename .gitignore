@@ -1,0 +1,27 @@
+.venv/
+.tools/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.idea/
+.vscode/
+.env
+.env.*
+!.env.example
+*.db
+*.db-*
+*.sqlite*
+*.bak
+*.zip
+*.log
+proxies.txt
+cookies*
+*session*.json
+# Original local handoff copies may contain credentials or personal screenshots.
+CODEX_HANDOFF/
+chatgpt_handoff_pack/
+CHATGPT_HANDOFF.md
+CODEX_HANDOFF.md
+GEMINI.md
+resale_intelligence/archive/

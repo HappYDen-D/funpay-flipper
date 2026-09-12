@@ -1,0 +1,34 @@
+{
+  "target_cumulative_profit": 25000,
+  "illustrative_horizon_days": 30,
+  "fixed_costs": 150,
+  "assumed_cycle_days": 2.5,
+  "notice": "Capacity requirements, not predicted sales. Additional refund reserves and account-level purchase blocks are not covered by this approximation.",
+  "rows": [
+    {
+      "contribution_rub": 20,
+      "assumed_buy_rub": 25,
+      "required_outcomes": 1258,
+      "outcomes_per_day": 41.93,
+      "working_capital_rub": 2620.83,
+      "capital_with_15pct_reserve_rub": 3083.33
+    },
+    {
+      "contribution_rub": 50,
+      "assumed_buy_rub": 75,
+      "required_outcomes": 503,
+      "outcomes_per_day": 16.77,
+      "working_capital_rub": 3143.75,
+      "capital_with_15pct_reserve_rub": 3698.53
+    },
+    {
+      "contribution_rub": 100,
+      "assumed_buy_rub": 200,
+      "required_outcomes": 252,
+      "outcomes_per_day": 8.4,
+      "working_capital_rub": 4200.0,
+      "capital_with_15pct_reserve_rub": 4941.18
+    }
+  ],
+  "status": "superseded_historical_illustration_not_a_target"
+}
