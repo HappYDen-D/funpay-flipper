@@ -21,6 +21,8 @@ class AssistantWorkflow:
 
     def evaluate_reviewed_candidate(self, candidate):
         payload, review = candidate['payload'], candidate['review']
+        if payload.get('canonical_sku', '').startswith('tf2_disc:') or payload.get('category_id', '').startswith('tf2_disc:'):
+            raise PermissionError('DISCOVERY_CANDIDATE_NOT_PURCHASABLE: Discovery candidates cannot be purchased')
         if not review:
             raise ValueError('NEEDS_EVIDENCE: сначала /review')
         validate_review(review)

@@ -7,6 +7,8 @@ PILOT_POLICY = RiskPolicy(reserve_ratio=.40)
 
 
 def check_capital(db, dry_run, review, category_id, price, *, conn=None, available_cash=None, emergency_stopped=None):
+    if str(category_id).startswith("tf2_disc:") or str(category_id).startswith("disc:"):
+        raise PermissionError("DISCOVERY_CANDIDATE_NOT_PURCHASABLE: Discovery candidates are strictly observation-only")
     state = db.capital_snapshot(dry_run, supplier_group=review['supplier_group'], category_id=category_id, conn=conn, emergency_stopped=emergency_stopped)
     if available_cash is not None:
         state['available_cash'] = min(state['available_cash'], available_cash)

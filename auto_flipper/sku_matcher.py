@@ -106,8 +106,12 @@ def is_benchmark_sku(sku: Optional[str]) -> bool:
 
 
 def get_sku_display_name(sku: str) -> str:
-    """Returns friendly English display name for known benchmark SKUs, or the raw SKU."""
-    return BENCHMARK_SKU_NAMES.get(sku, sku)
+    """Returns friendly English display name for known benchmark SKUs, formatted discovery name, or the raw SKU."""
+    if sku in BENCHMARK_SKU_NAMES:
+        return BENCHMARK_SKU_NAMES[sku]
+    if isinstance(sku, str) and sku.startswith("tf2_disc:"):
+        return sku[len("tf2_disc:") :].replace("_", " ").title()
+    return sku
 
 
 def match_sku(node_id: int, title: str) -> str:

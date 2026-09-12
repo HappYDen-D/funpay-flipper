@@ -29,9 +29,10 @@ async def alerts(message: Message):
 async def cmd_liquidity(message: Message):
     if not message.text:
         return
-    parts = message.text.split(maxsplit=1)
-    target_arg = parts[1].strip().lower() if len(parts) > 1 else ""
+    parts = message.text.split(maxsplit=2)
+    subcmd = parts[1].strip().lower() if len(parts) > 1 else ""
 
+    from auto_flipper.discovery import DiscoveryConfig, rank_market_liquidity
     from auto_flipper.liquidity import evaluate_sku_liquidity
     from auto_flipper.sku_matcher import (
         BENCHMARK_SKUS,
@@ -39,6 +40,82 @@ async def cmd_liquidity(message: Message):
         SKU_TF2_KEY,
         SKU_TF2_TICKET,
     )
+
+    # 1. /liquidity top [N]
+    if subcmd == "top":
+        try:
+            limit = int(parts[2].strip()) if len(parts) > 2 else 10
+        except ValueError:
+            limit = 10
+        limit = max(1, min(25, limit))
+
+        ranking = rank_market_liquidity(db)
+        top_items = ranking["top_candidates"][:limit]
+        if not top_items:
+            await message.answer(
+                "📊 <b>Кандидаты для рейтинга пока не найдены.</b>\n"
+                "<i>Накопите историю наблюдений через OBSERVE (минимум 3 лота, 3 продавца).</i>"
+            )
+            return
+
+        lines = [
+            f"🏆 <b>TOP-{len(top_items)} Ликвидных товаров (TF2)</b>\n"
+            f"<i>Групп найдено: {ranking['total_discovery_groups_found']} · Прошло фильтры: {ranking['qualified_groups_count']}</i>\n"
+        ]
+        for idx, c in enumerate(top_items, start=1):
+            ref = " [REF]" if c.is_benchmark else ""
+            icon = "🔑" if "5021" in c.canonical_sku else ("🎫" if "725" in c.canonical_sku else "📦")
+            hours = int(c.observation_duration_hours)
+            mins = int((c.observation_duration_hours - hours) * 60)
+            dur = f"{hours}h {mins:02d}m" if hours > 0 else f"{mins}m"
+            lines.append(
+                f"{idx}. {icon} <b>{escape(c.display_name)}</b>{ref}\n"
+                f"   Score: <b>{c.liquidity_score:.1f}/100</b> · Conf: <b>{escape(c.confidence)}</b>\n"
+                f"   Лотов: {c.active_lots} · Продавцов: {c.unique_sellers} · P25/P50: {c.p25_price:.1f}/{c.p50_price:.1f} ₽ · Depth: {c.competition_depth_bottom}\n"
+                f"   Turnover: {c.turnover_proxy:.1f}/h · Reappear: {c.reappearance_rate:.1f}/h · Vol: {c.price_volatility:.1%} · Набл: {dur}"
+            )
+        lines.append("\n<i>[REF] — benchmark эталон (только контроль, без бонусов).</i>")
+        await message.answer("\n\n".join(lines))
+        return
+
+    # 2. /liquidity bottom [N]
+    if subcmd == "bottom":
+        try:
+            limit = int(parts[2].strip()) if len(parts) > 2 else 10
+        except ValueError:
+            limit = 10
+        limit = max(1, min(25, limit))
+
+        ranking = rank_market_liquidity(db)
+        bottom_items = ranking["bottom_candidates"][:limit]
+        if not bottom_items:
+            await message.answer(
+                "📊 <b>Кандидаты для рейтинга пока не найдены.</b>\n"
+                "<i>Накопите историю наблюдений через OBSERVE.</i>"
+            )
+            return
+
+        lines = [
+            f"📉 <b>BOTTOM-{len(bottom_items)} Наименее ликвидных товаров (TF2)</b>\n"
+            f"<i>Групп найдено: {ranking['total_discovery_groups_found']} · Прошло фильтры: {ranking['qualified_groups_count']}</i>\n"
+        ]
+        for idx, c in enumerate(bottom_items, start=1):
+            ref = " [REF]" if c.is_benchmark else ""
+            icon = "🔑" if "5021" in c.canonical_sku else ("🎫" if "725" in c.canonical_sku else "📦")
+            hours = int(c.observation_duration_hours)
+            mins = int((c.observation_duration_hours - hours) * 60)
+            dur = f"{hours}h {mins:02d}m" if hours > 0 else f"{mins}m"
+            lines.append(
+                f"{idx}. {icon} <b>{escape(c.display_name)}</b>{ref}\n"
+                f"   Score: <b>{c.liquidity_score:.1f}/100</b> · Conf: <b>{escape(c.confidence)}</b>\n"
+                f"   Лотов: {c.active_lots} · Продавцов: {c.unique_sellers} · P25/P50: {c.p25_price:.1f}/{c.p50_price:.1f} ₽ · Depth: {c.competition_depth_bottom}\n"
+                f"   Turnover: {c.turnover_proxy:.1f}/h · Reappear: {c.reappearance_rate:.1f}/h · Vol: {c.price_volatility:.1%} · Набл: {dur}"
+            )
+        lines.append("\n<i>[REF] — benchmark эталон (только контроль, без бонусов).</i>")
+        await message.answer("\n\n".join(lines))
+        return
+
+    target_arg = subcmd
 
     # Detailed single SKU mode if requested
     if target_arg:
@@ -129,7 +206,12 @@ async def cmd_liquidity(message: Message):
         )
 
     response = "📊 <b>Ликвидность рынка (Benchmark SKUs)</b>\n\n" + "\n\n".join(blocks)
-    response += "\n\n<i>Для детального отчёта: /liquidity key или /liquidity ticket</i>"
+    response += (
+        "\n\n<i>Команды:\n"
+        "• /liquidity top — TOP ликвидных товаров\n"
+        "• /liquidity bottom — BOTTOM ликвидных товаров\n"
+        "• /liquidity key или /liquidity ticket — детальный профиль</i>"
+    )
     await message.answer(response)
 
 

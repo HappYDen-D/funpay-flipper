@@ -15,6 +15,7 @@ import statistics
 import time
 from typing import Any, Dict, List, Optional, Set, Tuple
 
+from auto_flipper.discovery import extract_discovery_sku, is_discovery_sku
 from auto_flipper.sku_matcher import (
     BENCHMARK_SKUS,
     SKU_UNKNOWN,
@@ -141,14 +142,18 @@ class MarketHistoryStore:
         """
         ts = time.time() if now is None else float(now)
 
-        # 1. Filter and classify lots by SKU
+        # 1. Filter and classify lots by SKU (exact benchmarks and autonomous discovery)
         sku_lots: Dict[str, List[Dict[str, Any]]] = {}
         for lot in observed_lots:
             node_id = int(lot.get("node_id", 1808))
             title = lot.get("title", "")
             sku = match_sku(node_id, title)
             if sku == SKU_UNKNOWN:
-                continue
+                disc_sku = extract_discovery_sku(node_id, title)
+                if disc_sku:
+                    sku = disc_sku
+                else:
+                    continue
             sku_lots.setdefault(sku, []).append(lot)
 
         # Determine which node_ids were actually scanned in this observation
@@ -172,14 +177,21 @@ class MarketHistoryStore:
             "samples_created": 0,
         }
 
-        # Process each observed benchmark SKU
-        # Only evaluate SKUs whose node was actually part of this scan to prevent false disappearances
+        # Process each observed SKU and evaluate active SKUs whose node was part of this scan
         candidate_skus = set(sku_lots.keys())
         for b_sku in BENCHMARK_SKUS:
             if SKU_NODE_MAP.get(b_sku, 1808) in active_scanned_nodes:
                 candidate_skus.add(b_sku)
 
         with self._lock, self._get_connection() as conn:
+            if active_scanned_nodes:
+                placeholders = ",".join("?" for _ in active_scanned_nodes)
+                prev_active = conn.execute(
+                    f"SELECT DISTINCT canonical_sku FROM market_history_lots WHERE is_active = 1 AND node_id IN ({placeholders})",
+                    list(active_scanned_nodes),
+                ).fetchall()
+                for r in prev_active:
+                    candidate_skus.add(r[0])
             for sku in candidate_skus:
                 current_lots = sku_lots.get(sku, [])
                 current_map = {l["lot_id"]: l for l in current_lots if "lot_id" in l}
@@ -479,3 +491,29 @@ class MarketHistoryStore:
             "dispersion": dispersion,
             "mad": compute_mad(prices),
         }
+
+    def get_discovery_skus(self, active_only: bool = True) -> List[str]:
+        """Returns list of all discovery canonical SKUs recorded in market history."""
+        with self._get_connection() as conn:
+            if active_only:
+                rows = conn.execute(
+                    "SELECT DISTINCT canonical_sku FROM market_history_lots WHERE canonical_sku LIKE 'tf2_disc:%' AND is_active = 1 ORDER BY canonical_sku ASC"
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT DISTINCT canonical_sku FROM market_history_lots WHERE canonical_sku LIKE 'tf2_disc:%' ORDER BY canonical_sku ASC"
+                ).fetchall()
+            return [r[0] for r in rows]
+
+    def get_all_tracked_skus(self, active_only: bool = True) -> List[str]:
+        """Returns all distinct canonical SKUs (benchmarks + discovery) present in market history."""
+        with self._get_connection() as conn:
+            if active_only:
+                rows = conn.execute(
+                    "SELECT DISTINCT canonical_sku FROM market_history_lots WHERE is_active = 1 ORDER BY canonical_sku ASC"
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT DISTINCT canonical_sku FROM market_history_lots ORDER BY canonical_sku ASC"
+                ).fetchall()
+            return [r[0] for r in rows]
