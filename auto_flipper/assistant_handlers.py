@@ -322,6 +322,30 @@ async def on_liquidity_callback(query: CallbackQuery):
             await query.message.answer(text, reply_markup=kb)
 
 
+@router.message(Command('accountmarkets'))
+async def cmd_accountmarkets(message: Message):
+    """Compact real-data account market summary/detail view."""
+    from auto_flipper.account_market_observer import (
+        format_account_market_detail,
+        format_account_market_summary,
+        format_account_markets,
+        market_alias_to_id,
+    )
+    raw = (message.text or "").strip().split(maxsplit=1)
+    argument = raw[1].strip().lower() if len(raw) > 1 else ""
+    if not argument:
+        text = format_account_markets(db, flipper_engine.account_market_observer.selector)
+    elif argument == "summary":
+        text = format_account_market_summary(db)
+    else:
+        market_id = market_alias_to_id(argument)
+        if market_id is None:
+            await message.answer("Unknown market. Use: brawl/bs/бравл, coc/клеш/кок, fortnite/fn/фортнайт, summary.")
+            return
+        text = format_account_market_detail(db, market_id)
+    await message.answer(text)
+
+
 @router.message(Command('candidates'))
 async def candidates(message: Message):
     rows = db.recent_candidates()

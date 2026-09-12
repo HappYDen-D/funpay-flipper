@@ -132,6 +132,7 @@ async def setup_bot_commands(bot: Bot):
         BotCommand(command="liquidity_bottom", description="🔻 Наименее ликвидные позиции"),
         BotCommand(command="liquidity_key", description="🔑 Профиль Mann Co. Supply Crate Key"),
         BotCommand(command="liquidity_ticket", description="🎫 Профиль Tour of Duty Ticket"),
+        BotCommand(command="accountmarkets", description="Read-only наблюдение рынков игровых аккаунтов"),
         BotCommand(command="pnl", description="📈 Финансовый отчёт P&L и ROI"),
         BotCommand(command="categories", description="📁 Целевые категории снайпинга"),
         BotCommand(command="inventory", description="📦 Склад и активные лоты"),

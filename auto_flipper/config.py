@@ -86,6 +86,30 @@ TURBO_POLL_INTERVAL = 6.0
 ORDERS_POLL_INTERVAL = 15.0
 REQUEST_TIMEOUT = 15.0
 
+# Read-only account-market observer. These nodes are verified public FunPay
+# account markets; adding a node here requires separate validation.
+ACCOUNT_MARKET_OBSERVER_ENABLED = os.getenv("ACCOUNT_MARKET_OBSERVER_ENABLED", "true").lower() in ("true", "1", "yes")
+ACCOUNT_MARKET_SEEDS = {
+    "funpay:account:436": {"name": "Brawl Stars", "node_id": 436, "aliases": ("brawl", "bs", "бравл")},
+    "funpay:account:147": {"name": "Clash of Clans", "node_id": 147, "aliases": ("coc", "клеш", "кок")},
+    "funpay:account:248": {"name": "Fortnite", "node_id": 248, "aliases": ("fortnite", "fn", "фортнайт")},
+}
+ACCOUNT_CHEAP_RUB_THRESHOLD = float(os.getenv("ACCOUNT_CHEAP_RUB_THRESHOLD", "500"))
+MAX_ACTIVE_ACCOUNT_MARKETS = min(2, max(0, int(os.getenv("MAX_ACTIVE_ACCOUNT_MARKETS", "2"))))
+ACCOUNT_ACTIVE_POLL_MIN_SECONDS = float(os.getenv("ACCOUNT_ACTIVE_POLL_MIN_SECONDS", "180"))
+ACCOUNT_ACTIVE_POLL_MAX_SECONDS = float(os.getenv("ACCOUNT_ACTIVE_POLL_MAX_SECONDS", "300"))
+ACCOUNT_BACKGROUND_POLL_MIN_SECONDS = float(os.getenv("ACCOUNT_BACKGROUND_POLL_MIN_SECONDS", "720"))
+ACCOUNT_BACKGROUND_POLL_MAX_SECONDS = float(os.getenv("ACCOUNT_BACKGROUND_POLL_MAX_SECONDS", "900"))
+ACCOUNT_SAMPLE_INTERVAL_SECONDS = float(os.getenv("ACCOUNT_SAMPLE_INTERVAL_SECONDS", "180"))
+ACCOUNT_MIN_ACTIVE_LOTS = int(os.getenv("ACCOUNT_MIN_ACTIVE_LOTS", "100"))
+ACCOUNT_MIN_INDEPENDENT_SELLERS = int(os.getenv("ACCOUNT_MIN_INDEPENDENT_SELLERS", "20"))
+ACCOUNT_MIN_CHEAP_LOTS = int(os.getenv("ACCOUNT_MIN_CHEAP_LOTS", "10"))
+ACCOUNT_MIN_CHEAP_SELLERS = int(os.getenv("ACCOUNT_MIN_CHEAP_SELLERS", "5"))
+ACCOUNT_MIN_PARSEABLE_RATIO = float(os.getenv("ACCOUNT_MIN_PARSEABLE_RATIO", "0.35"))
+ACCOUNT_MAX_LARGEST_SELLER_SHARE = float(os.getenv("ACCOUNT_MAX_LARGEST_SELLER_SHARE", "0.50"))
+ACCOUNT_SELECTION_HYSTERESIS_POINTS = float(os.getenv("ACCOUNT_SELECTION_HYSTERESIS_POINTS", "5"))
+ACCOUNT_SELECTION_CONFIRM_SAMPLES = int(os.getenv("ACCOUNT_SELECTION_CONFIRM_SAMPLES", "3"))
+
 # HTTP Headers for FunPay Web Protocol
 DEFAULT_HEADERS = {
     "User-Agent": (

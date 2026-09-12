@@ -3,7 +3,7 @@ import asyncio
 import time
 from auto_flipper.database import db
 from auto_flipper.economics import kopecks
-from auto_flipper.safety import validate_review, action_allowed
+from auto_flipper.safety import validate_review, action_allowed, reject_account_observation_purchase
 from resale_intelligence.models.risk_gate import RiskSnapshot, assess_purchase
 
 
@@ -21,6 +21,7 @@ class AssistantWorkflow:
 
     def evaluate_reviewed_candidate(self, candidate):
         payload, review = candidate['payload'], candidate['review']
+        reject_account_observation_purchase(candidate)
         if payload.get('canonical_sku', '').startswith('tf2_disc:') or payload.get('category_id', '').startswith('tf2_disc:'):
             raise PermissionError('DISCOVERY_CANDIDATE_NOT_PURCHASABLE: Discovery candidates cannot be purchased')
         if not review:

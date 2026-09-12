@@ -11,6 +11,27 @@ MODEL_FIELDS = {'operating_cost', 'sale_probability', 'early_defect_rate',
 REQUIRED_MODEL_FIELDS = MODEL_FIELDS - {'late_fine'}
 
 
+def is_account_observation_candidate(value):
+    """Return True for any payload/category originating in account observation."""
+    if not isinstance(value, dict):
+        return str(value).startswith("funpay:account:") or str(value) == "ACCOUNT_OBSERVATION"
+    payload = value.get("payload") if isinstance(value.get("payload"), dict) else value
+    return (
+        str(payload.get("source_type", "")).upper() == "ACCOUNT_OBSERVATION"
+        or str(payload.get("market_id", "")).startswith("funpay:account:")
+        or str(payload.get("canonical_sku", "")).startswith("account:")
+        or str(payload.get("category_id", "")).startswith("funpay:account:")
+        or payload.get("purchase_eligible") is False
+    )
+
+
+def reject_account_observation_purchase(value):
+    if is_account_observation_candidate(value):
+        raise PermissionError(
+            "ACCOUNT_OBSERVATION_NOT_PURCHASABLE: account-market observations are permanently read-only"
+        )
+
+
 def validate_review(review):
     if not isinstance(review, dict):
         raise ValueError('Review must be an object')

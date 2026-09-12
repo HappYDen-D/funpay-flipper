@@ -86,6 +86,10 @@ class SafetyStore(CapitalStore, ManualRouteStore, MarketHistoryStore):
         BEGIN IMMEDIATE serializes the check and claim across processes. A failed
         or unknown attempt remains claimed until an explicit new business decision.
         """
+        from auto_flipper.safety import reject_account_observation_purchase
+        reject_account_observation_purchase(category_id)
+        if candidate:
+            reject_account_observation_purchase(candidate)
         if str(category_id).startswith("tf2_disc:") or str(category_id).startswith("disc:"):
             raise PermissionError("DISCOVERY_CANDIDATE_NOT_PURCHASABLE: Discovery candidates are strictly observation-only")
         if candidate and (

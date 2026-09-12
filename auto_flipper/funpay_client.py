@@ -468,13 +468,18 @@ class FunPayClient:
             return float(info.get("balance_available", info.get("balance_rub", 0.0)))
         return 0.0
 
-    async def checkout_lot(self, lot_id: str, price: float, dry_run: bool = True, *, preflight=None, expected_sku=None) -> Dict[str, Any]:
+    async def checkout_lot(self, lot_id: str, price: float, dry_run: bool = True, *, preflight=None,
+                           expected_sku=None, source_type=None, purchase_eligible=None) -> Dict[str, Any]:
         """
         Executes order checkout using FunPay balance.
         In DRY_RUN mode: generates simulated order ID and records execution.
         If a network error occurs after dispatching the POST request, marks outcome as UNKNOWN
         to enforce external reconciliation before retrying.
         """
+        from auto_flipper.safety import reject_account_observation_purchase
+        reject_account_observation_purchase({"source_type": source_type,
+                                             "canonical_sku": expected_sku,
+                                             "purchase_eligible": purchase_eligible})
         if not isinstance(lot_id, str):
             return {"success": False, "dry_run": dry_run, "status": "FAILED", "error": "INVALID_LOT_ID"}
         raw_lot_num = lot_id.removeprefix("funpay_")
@@ -993,7 +998,8 @@ class FunPayClient:
         ]
         return any(good in cleaned_t for good in personal_keywords)
 
-    def parse_lots(self, html_content: str, node_id: int = 1355) -> List[Dict[str, Any]]:
+    def parse_lots(self, html_content: str, node_id: int = 1355,
+                   include_unknown_currency: bool = False) -> List[Dict[str, Any]]:
         """Parses FunPay lots HTML table into structured lot dictionaries."""
         lots: List[Dict[str, Any]] = []
         item_regex = re.compile(
@@ -1018,6 +1024,11 @@ class FunPayClient:
             f_sub = f_sub_m.group(1).strip() if f_sub_m else ""
             f_type_m = re.search(r'data-f-type=["\']([^"\']*)["\']', tag_open, re.IGNORECASE)
             f_type = f_type_m.group(1).strip() if f_type_m else ""
+            structured_fields = {
+                html.unescape(key).lower().replace("-", "_"): html.unescape(value).strip()
+                for key, value in re.findall(r'data-f-([\w-]+)=["\']([^"\']*)["\']', tag_open, re.IGNORECASE)
+                if value.strip()
+            }
 
             # 3. Title / Description
             desc_m = re.search(r'class=["\']tc-desc-text["\'][^>]*>(.*?)</div>', body, re.DOTALL | re.IGNORECASE)
@@ -1061,19 +1072,28 @@ class FunPayClient:
             unit = html.unescape(unit_m.group(1)).strip().lower() if unit_m else ""
             tc_clean = html.unescape(re.sub(r'<[^>]+>', ' ', tc_price_html)).lower() if tc_price_html else ""
 
-            # Normalize to RUB
+            # Preserve non-RUB values only for read-only research. They remain in
+            # their displayed currency and are excluded from RUB budget metrics.
             if any(sym in (unit or tc_clean) for sym in ["$", "usd", "dollar"]):
-                continue  # No verified FX quote
+                currency = "USD"
             elif any(sym in (unit or tc_clean) for sym in ["€", "eur", "euro"]):
-                continue  # No verified FX quote
-            elif any(sym in (unit or tc_clean) for sym in ["₴", "грн", "uah", "₸", "kzt", "byn", "zł", "try", "₺"]):
-                continue
+                currency = "EUR"
+            elif any(sym in (unit or tc_clean) for sym in ["₴", "грн", "uah"]):
+                currency = "UAH"
+            elif any(sym in (unit or tc_clean) for sym in ["₸", "kzt"]):
+                currency = "KZT"
+            elif any(sym in (unit or tc_clean) for sym in ["byn"]):
+                currency = "BYN"
+            elif any(sym in (unit or tc_clean) for sym in ["zł"]):
+                currency = "PLN"
+            elif any(sym in (unit or tc_clean) for sym in ["try", "₺"]):
+                currency = "TRY"
             elif re.search(r"₽|\bруб\.?|\brub\b", unit or tc_clean):
-                price_rub = round(price_val, 2)
+                currency = "RUB"
             else:
-                continue  # Session cookies do not prove the displayed currency.
+                currency = "UNKNOWN"
 
-            if price_rub <= 0.0:
+            if price_val <= 0.0 or (currency != "RUB" and not include_unknown_currency):
                 continue
 
             from auto_flipper.categories import detect_category_for_lot, get_category_by_node
@@ -1100,8 +1120,8 @@ class FunPayClient:
                 "lot_id": lot_id,
                 "lot_num": lot_num,
                 "title": clean_title,
-                "price": price_rub,
-                "currency": "RUB",
+                "price": round(price_val, 2),
+                "currency": currency,
                 "stock": stock,
                 "seller": seller,
                 "seller_rating": seller_rating,
@@ -1111,11 +1131,13 @@ class FunPayClient:
                 "is_plus": is_plus,
                 "node_id": node_id,
                 "category_id": cat_id,
+                "structured_fields": structured_fields,
             })
 
         return lots
 
-    async def fetch_market_lots(self, node_ids: Optional[List[int]] = None) -> List[Dict[str, Any]]:
+    async def fetch_market_lots(self, node_ids: Optional[List[int]] = None,
+                                observation_only: bool = False) -> List[Dict[str, Any]]:
         """
         Fetches active marketplace listings from FunPay target categories.
         Default nodes: all target categories [89, 923, 3734, 1568, 1391, 1355, 3559].
@@ -1138,7 +1160,8 @@ class FunPayClient:
                             logger.warning("FunPay market request blocked: %s", problem)
                             break
                         if resp.status_code == 200:
-                            lots = self.parse_lots(resp.text, node_id=node)
+                            lots = self.parse_lots(resp.text, node_id=node,
+                                                   include_unknown_currency=observation_only)
                             for lot in lots:
                                 if lot["lot_id"] not in seen_ids:
                                     seen_ids.add(lot["lot_id"])
@@ -1151,3 +1174,15 @@ class FunPayClient:
             logger.error(f"Error in fetch_market_lots: {self._safe_error(e)}")
 
         return all_lots
+
+    async def fetch_account_market_lots(self, node_id: int) -> List[Dict[str, Any]]:
+        """GET-only public account-market fetch used by AccountMarketObserver.
+
+        The allowlist prevents this research entry point from being repurposed
+        for arbitrary nodes. It never calls checkout, runner, messages, or POST.
+        """
+        from auto_flipper.config import ACCOUNT_MARKET_SEEDS
+        allowed = {int(seed["node_id"]) for seed in ACCOUNT_MARKET_SEEDS.values()}
+        if int(node_id) not in allowed:
+            raise ValueError("unsupported account observation node")
+        return await self.fetch_market_lots([int(node_id)], observation_only=True)

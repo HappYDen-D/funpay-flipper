@@ -1076,8 +1076,8 @@ async def cb_enable_all_categories(callback: CallbackQuery):
 
     from auto_flipper.safety import EXCLUDED_CATEGORIES
     for cat_id, cat in CATEGORY_REGISTRY.items():
-        if not getattr(cat, 'is_deprecated', False) and cat_id not in EXCLUDED_CATEGORIES:
-            db.set_category_enabled(cat_id, True)
+        enabled = not getattr(cat, 'is_deprecated', False) and cat_id not in EXCLUDED_CATEGORIES
+        db.set_category_enabled(cat_id, enabled)
     await callback.answer("✅ Все категории успешно включены!", show_alert=True)
     enabled = db.get_enabled_categories()
     medians = flipper_engine.category_medians

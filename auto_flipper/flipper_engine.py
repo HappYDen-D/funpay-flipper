@@ -29,6 +29,7 @@ from auto_flipper.categories import (
     get_category_by_node,
 )
 from auto_flipper.config import (
+    ACCOUNT_MARKET_OBSERVER_ENABLED,
     ARBITRAGE_AUTO_BUY_DEFAULT,
     ARBITRAGE_DRY_RUN_DEFAULT,
     ARBITRAGE_MARKUP_DISCOUNT,
@@ -241,6 +242,9 @@ class FlipperEngine(AssistantWorkflow):
             cat_id: cat.market_benchmark for cat_id, cat in CATEGORY_REGISTRY.items()
         }
         self.boost_scheduler = BackgroundBoostScheduler(self)
+        from auto_flipper.account_market_observer import AccountMarketObserver
+        self.account_market_observer = AccountMarketObserver(self.client, db)
+        self._account_observer_task: Optional[asyncio.Task] = None
 
     @property
     def market_median(self) -> float:
@@ -800,11 +804,21 @@ class FlipperEngine(AssistantWorkflow):
         self._bot = bot
         self.boost_scheduler.start(auto_schedule=self.can_act("boost"))
         self._loop_task = asyncio.create_task(self._main_flipper_loop())
+        if ACCOUNT_MARKET_OBSERVER_ENABLED:
+            self._account_observer_task = asyncio.create_task(self.account_market_observer.run())
         logger.info("FlipperEngine background runner launched.")
 
     async def stop(self):
         self._is_running = False
         self.boost_scheduler.stop()
+        self.account_market_observer.stop()
+        if self._account_observer_task:
+            self._account_observer_task.cancel()
+            try:
+                await self._account_observer_task
+            except asyncio.CancelledError:
+                pass
+            self._account_observer_task = None
         if self._loop_task:
             self._loop_task.cancel()
             try:

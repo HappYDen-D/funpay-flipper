@@ -37,7 +37,8 @@ def main():
             'test_auto_flipper','test_safe_flipper','test_client_contracts',
             'auto_flipper.test_exit_policy','auto_flipper.test_capital_store','test_manual_route','test_pilot_integration',
             'resale_intelligence.models.test_models','resale_intelligence.models.test_risk_gate',
-            'test_liquidity_calibration', 'test_discovery_and_blind_ranking'])
+            'test_liquidity_calibration', 'test_discovery_and_blind_ranking',
+            'test_account_market_observer'])
         result=unittest.TextTestRunner(verbosity=1).run(suite)
         return 0 if result.wasSuccessful() else 1
 

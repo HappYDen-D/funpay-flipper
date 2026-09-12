@@ -114,6 +114,77 @@ class MarketHistoryStore:
             "CREATE INDEX IF NOT EXISTS idx_mhl_last_seen ON market_history_lots (last_seen_at)",
             "CREATE INDEX IF NOT EXISTS idx_mhe_sku_time ON market_lot_events (canonical_sku, timestamp)",
             "CREATE INDEX IF NOT EXISTS idx_mss_sku_time ON market_sku_samples (canonical_sku, sampled_at)",
+            # Account observation extends this same history store. Composite keys
+            # make disappearance semantics strictly market-local.
+            """CREATE TABLE IF NOT EXISTS account_market_lots (
+                market_id TEXT NOT NULL,
+                lot_id TEXT NOT NULL,
+                node_id INTEGER NOT NULL,
+                seller TEXT NOT NULL,
+                seller_rating REAL DEFAULT 0.0,
+                seller_reviews INTEGER DEFAULT 0,
+                price REAL,
+                currency TEXT NOT NULL DEFAULT 'UNKNOWN',
+                stock INTEGER DEFAULT 1,
+                title TEXT NOT NULL,
+                url TEXT NOT NULL DEFAULT '',
+                cohort_id TEXT NOT NULL,
+                cohort_confidence REAL NOT NULL DEFAULT 0.0,
+                classified INTEGER NOT NULL DEFAULT 0,
+                features_json TEXT NOT NULL,
+                risk_flags_json TEXT NOT NULL,
+                source_type TEXT NOT NULL DEFAULT 'ACCOUNT_OBSERVATION',
+                purchase_eligible INTEGER NOT NULL DEFAULT 0 CHECK (purchase_eligible = 0),
+                first_seen_at REAL NOT NULL,
+                last_seen_at REAL NOT NULL,
+                observed_at REAL NOT NULL,
+                is_active INTEGER NOT NULL DEFAULT 1,
+                disappeared_at REAL,
+                reappearance_count INTEGER NOT NULL DEFAULT 0,
+                price_change_count INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (market_id, lot_id)
+            )""",
+            """CREATE TABLE IF NOT EXISTS account_market_events (
+                event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                market_id TEXT NOT NULL,
+                lot_id TEXT NOT NULL,
+                cohort_id TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                old_price REAL,
+                new_price REAL,
+                old_stock INTEGER,
+                new_stock INTEGER,
+                timestamp REAL NOT NULL
+            )""",
+            """CREATE TABLE IF NOT EXISTS account_market_samples (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp REAL NOT NULL,
+                market_id TEXT NOT NULL,
+                active_lots INTEGER NOT NULL,
+                independent_sellers INTEGER NOT NULL,
+                cheap_lot_count INTEGER NOT NULL,
+                cheap_independent_sellers INTEGER NOT NULL,
+                classified_lots INTEGER NOT NULL,
+                metrics_json TEXT NOT NULL
+            )""",
+            """CREATE TABLE IF NOT EXISTS account_cohort_samples (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp REAL NOT NULL,
+                market_id TEXT NOT NULL,
+                cohort_id TEXT NOT NULL,
+                active_lots INTEGER NOT NULL,
+                independent_sellers INTEGER NOT NULL,
+                p10 REAL, p25 REAL, p50 REAL, p75 REAL, p90 REAL,
+                min_price REAL, max_price REAL, mad REAL, dispersion REAL,
+                cheap_lot_count INTEGER NOT NULL,
+                new_count INTEGER NOT NULL,
+                disappearance_count INTEGER NOT NULL,
+                reappearance_count INTEGER NOT NULL
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_aml_market_active ON account_market_lots (market_id, is_active)",
+            "CREATE INDEX IF NOT EXISTS idx_ame_market_time ON account_market_events (market_id, timestamp)",
+            "CREATE INDEX IF NOT EXISTS idx_ams_market_time ON account_market_samples (market_id, timestamp)",
+            "CREATE INDEX IF NOT EXISTS idx_acs_cohort_time ON account_cohort_samples (market_id, cohort_id, timestamp)",
         )
         for sql in statements:
             conn.execute(sql)
@@ -517,3 +588,215 @@ class MarketHistoryStore:
                     "SELECT DISTINCT canonical_sku FROM market_history_lots ORDER BY canonical_sku ASC"
                 ).fetchall()
             return [r[0] for r in rows]
+
+    # ─────────────────────────────────────────────────────────────
+    # Read-only account-market history (v0.5)
+    # ─────────────────────────────────────────────────────────────
+
+    def record_account_market_observation(
+        self,
+        market_id: str,
+        observed_lots: List[Dict[str, Any]],
+        now: Optional[float] = None,
+        sample_interval_seconds: float = 180.0,
+        force_sample: bool = False,
+    ) -> Dict[str, Any]:
+        """Record one complete scan of exactly one account market.
+
+        Absence can only produce DISAPPEARED inside ``market_id``. The method
+        rejects mixed-node input so a partial or malformed call fails closed.
+        """
+        from auto_flipper.account_cohort_normalizer import (
+            ACCOUNT_OBSERVATION_SOURCE,
+            normalize_account_lot,
+        )
+        from auto_flipper.config import ACCOUNT_CHEAP_RUB_THRESHOLD, ACCOUNT_MARKET_SEEDS
+
+        if market_id not in ACCOUNT_MARKET_SEEDS:
+            raise ValueError("unsupported account market")
+        node_id = int(ACCOUNT_MARKET_SEEDS[market_id]["node_id"])
+        if any(int(lot.get("node_id", node_id)) != node_id for lot in observed_lots):
+            raise ValueError("mixed market observation is forbidden")
+        ts = time.time() if now is None else float(now)
+        normalized = []
+        for lot in observed_lots:
+            if "lot_id" not in lot:
+                continue
+            result = normalize_account_lot(market_id, lot)
+            normalized.append((lot, result))
+        current = {str(lot["lot_id"]): (lot, result) for lot, result in normalized}
+        summary = {"timestamp": ts, "market_id": market_id, "new_count": 0,
+                   "disappearance_count": 0, "reappearance_count": 0,
+                   "price_change_count": 0, "stock_change_count": 0,
+                   "samples_created": 0, "cohort_samples_created": 0,
+                   "lots_observed": len(current),
+                   "classified": sum(1 for _, r in normalized if r.classified)}
+
+        def price_of(lot):
+            try:
+                return float(lot.get("price")) if lot.get("price") is not None else None
+            except (TypeError, ValueError):
+                return None
+
+        with self._lock, self._get_connection() as conn:
+            previous_rows = conn.execute(
+                "SELECT * FROM account_market_lots WHERE market_id=? AND is_active=1", (market_id,)
+            ).fetchall()
+            previous = {row["lot_id"]: dict(row) for row in previous_rows}
+            for lot_id in sorted(set(previous) - set(current)):
+                old = previous[lot_id]
+                conn.execute("UPDATE account_market_lots SET is_active=0, disappeared_at=? WHERE market_id=? AND lot_id=?",
+                             (ts, market_id, lot_id))
+                conn.execute("""INSERT INTO account_market_events
+                    (market_id,lot_id,cohort_id,event_type,old_price,new_price,old_stock,new_stock,timestamp)
+                    VALUES(?,?,?,'DISAPPEARED',?,NULL,?,NULL,?)""",
+                             (market_id, lot_id, old["cohort_id"], old["price"], old["stock"], ts))
+                summary["disappearance_count"] += 1
+
+            for lot_id in sorted(current):
+                lot, result = current[lot_id]
+                price = price_of(lot)
+                stock = max(1, int(lot.get("stock") or 1))
+                seller = str(lot.get("seller") or "Unknown")
+                existing_row = conn.execute(
+                    "SELECT * FROM account_market_lots WHERE market_id=? AND lot_id=?", (market_id, lot_id)
+                ).fetchone()
+                if existing_row is None:
+                    conn.execute("""INSERT INTO account_market_lots
+                        (market_id,lot_id,node_id,seller,seller_rating,seller_reviews,price,currency,stock,title,url,
+                         cohort_id,cohort_confidence,classified,features_json,risk_flags_json,source_type,
+                         purchase_eligible,first_seen_at,last_seen_at,observed_at,is_active,disappeared_at,
+                         reappearance_count,price_change_count)
+                        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?,?,?,1,NULL,0,0)""",
+                        (market_id, lot_id, node_id, seller, float(lot.get("seller_rating") or 0),
+                         int(lot.get("seller_reviews") or 0), price, str(lot.get("currency") or "UNKNOWN").upper(),
+                         stock, str(lot.get("title") or ""), str(lot.get("url") or ""), result.cohort_id,
+                         result.confidence, int(result.classified), json.dumps(result.features, ensure_ascii=False, sort_keys=True),
+                         json.dumps(list(result.risk_flags), ensure_ascii=False), ACCOUNT_OBSERVATION_SOURCE, ts, ts, ts))
+                    conn.execute("""INSERT INTO account_market_events
+                        (market_id,lot_id,cohort_id,event_type,old_price,new_price,old_stock,new_stock,timestamp)
+                        VALUES(?,?,?,'NEW',NULL,?,NULL,?,?)""",
+                        (market_id, lot_id, result.cohort_id, price, stock, ts))
+                    summary["new_count"] += 1
+                else:
+                    old = dict(existing_row)
+                    reappeared = not bool(old["is_active"])
+                    price_changed = old["price"] != price
+                    stock_changed = int(old["stock"]) != stock
+                    if reappeared:
+                        conn.execute("""INSERT INTO account_market_events
+                            (market_id,lot_id,cohort_id,event_type,old_price,new_price,old_stock,new_stock,timestamp)
+                            VALUES(?,?,?,'REAPPEARED',?,?,?,?,?)""",
+                            (market_id, lot_id, result.cohort_id, old["price"], price, old["stock"], stock, ts))
+                        summary["reappearance_count"] += 1
+                    if price_changed:
+                        conn.execute("""INSERT INTO account_market_events
+                            (market_id,lot_id,cohort_id,event_type,old_price,new_price,old_stock,new_stock,timestamp)
+                            VALUES(?,?,?,'PRICE_CHANGE',?,?,?,?,?)""",
+                            (market_id, lot_id, result.cohort_id, old["price"], price, old["stock"], stock, ts))
+                        summary["price_change_count"] += 1
+                    if stock_changed and not reappeared:
+                        conn.execute("""INSERT INTO account_market_events
+                            (market_id,lot_id,cohort_id,event_type,old_price,new_price,old_stock,new_stock,timestamp)
+                            VALUES(?,?,?,'STOCK_CHANGE',?,?,?,?,?)""",
+                            (market_id, lot_id, result.cohort_id, old["price"], price, old["stock"], stock, ts))
+                        summary["stock_change_count"] += 1
+                    conn.execute("""UPDATE account_market_lots SET seller=?,seller_rating=?,seller_reviews=?,price=?,
+                        currency=?,stock=?,title=?,url=?,cohort_id=?,cohort_confidence=?,classified=?,features_json=?,
+                        risk_flags_json=?,source_type=?,purchase_eligible=0,last_seen_at=?,observed_at=?,is_active=1,
+                        disappeared_at=NULL,reappearance_count=?,price_change_count=? WHERE market_id=? AND lot_id=?""",
+                        (seller, float(lot.get("seller_rating") or 0), int(lot.get("seller_reviews") or 0), price,
+                         str(lot.get("currency") or "UNKNOWN").upper(), stock, str(lot.get("title") or ""),
+                         str(lot.get("url") or ""), result.cohort_id, result.confidence, int(result.classified),
+                         json.dumps(result.features, ensure_ascii=False, sort_keys=True),
+                         json.dumps(list(result.risk_flags), ensure_ascii=False), ACCOUNT_OBSERVATION_SOURCE, ts, ts,
+                         int(old["reappearance_count"]) + int(reappeared),
+                         int(old["price_change_count"]) + int(price_changed), market_id, lot_id))
+
+            last = conn.execute("SELECT timestamp FROM account_market_samples WHERE market_id=? ORDER BY timestamp DESC LIMIT 1",
+                                (market_id,)).fetchone()
+            if force_sample or last is None or ts - float(last["timestamp"]) >= sample_interval_seconds:
+                rows = conn.execute("SELECT * FROM account_market_lots WHERE market_id=? AND is_active=1", (market_id,)).fetchall()
+                active = [dict(row) for row in rows]
+                rub = [r for r in active if r["currency"] == "RUB" and r["price"] is not None]
+                cheap = [r for r in rub if float(r["price"]) <= ACCOUNT_CHEAP_RUB_THRESHOLD]
+                sellers = {r["seller"] for r in active}
+                classified = [r for r in active if r["classified"]]
+                metadata = {"unknown_currency_count": len(active) - len(rub), "source_type": ACCOUNT_OBSERVATION_SOURCE,
+                            "purchase_eligible": False}
+                conn.execute("""INSERT INTO account_market_samples
+                    (timestamp,market_id,active_lots,independent_sellers,cheap_lot_count,
+                     cheap_independent_sellers,classified_lots,metrics_json) VALUES(?,?,?,?,?,?,?,?)""",
+                    (ts, market_id, len(active), len(sellers), len(cheap), len({r["seller"] for r in cheap}),
+                     len(classified), json.dumps(metadata, ensure_ascii=False, sort_keys=True)))
+                summary["samples_created"] += 1
+
+                events = conn.execute("SELECT cohort_id,event_type FROM account_market_events WHERE market_id=? AND timestamp>? AND timestamp<=?",
+                                      (market_id, float(last["timestamp"]) if last else -1, ts)).fetchall()
+                counts: Dict[Tuple[str, str], int] = {}
+                for event in events:
+                    counts[(event["cohort_id"], event["event_type"])] = counts.get((event["cohort_id"], event["event_type"]), 0) + 1
+                cohort_ids = sorted({r["cohort_id"] for r in classified})
+                for cohort_id in cohort_ids:
+                    cohort_rows = [r for r in classified if r["cohort_id"] == cohort_id]
+                    prices = sorted(float(r["price"]) for r in cohort_rows if r["currency"] == "RUB" and r["price"] is not None)
+                    if prices:
+                        p10, p25, p50 = compute_quantile(prices, .10), compute_quantile(prices, .25), compute_quantile(prices, .50)
+                        p75, p90 = compute_quantile(prices, .75), compute_quantile(prices, .90)
+                        dispersion = round((p90 - p10) / max(.01, p50), 4)
+                        min_price, max_price, mad = prices[0], prices[-1], compute_mad(prices)
+                    else:
+                        p10 = p25 = p50 = p75 = p90 = min_price = max_price = mad = dispersion = None
+                    conn.execute("""INSERT INTO account_cohort_samples
+                        (timestamp,market_id,cohort_id,active_lots,independent_sellers,p10,p25,p50,p75,p90,
+                         min_price,max_price,mad,dispersion,cheap_lot_count,new_count,disappearance_count,reappearance_count)
+                        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                        (ts, market_id, cohort_id, len(cohort_rows), len({r["seller"] for r in cohort_rows}),
+                         p10, p25, p50, p75, p90, min_price, max_price, mad, dispersion,
+                         sum(1 for r in cohort_rows if r["currency"] == "RUB" and r["price"] is not None and float(r["price"]) <= ACCOUNT_CHEAP_RUB_THRESHOLD),
+                         counts.get((cohort_id, "NEW"), 0), counts.get((cohort_id, "DISAPPEARED"), 0),
+                         counts.get((cohort_id, "REAPPEARED"), 0)))
+                    summary["cohort_samples_created"] += 1
+        return summary
+
+    def get_account_market_lots(self, market_id: str, active_only: bool = True) -> List[Dict[str, Any]]:
+        query = "SELECT * FROM account_market_lots WHERE market_id=?"
+        if active_only:
+            query += " AND is_active=1"
+        query += " ORDER BY price IS NULL, price, lot_id"
+        with self._get_connection() as conn:
+            rows = conn.execute(query, (market_id,)).fetchall()
+            result = []
+            for row in rows:
+                item = dict(row)
+                item["features"] = json.loads(item.pop("features_json"))
+                item["risk_flags"] = json.loads(item.pop("risk_flags_json"))
+                result.append(item)
+            return result
+
+    def get_account_market_events(self, market_id: str, since_timestamp: Optional[float] = None) -> List[Dict[str, Any]]:
+        with self._get_connection() as conn:
+            if since_timestamp is None:
+                rows = conn.execute("SELECT * FROM account_market_events WHERE market_id=? ORDER BY timestamp,event_id",
+                                    (market_id,)).fetchall()
+            else:
+                rows = conn.execute("SELECT * FROM account_market_events WHERE market_id=? AND timestamp>=? ORDER BY timestamp,event_id",
+                                    (market_id, since_timestamp)).fetchall()
+            return [dict(row) for row in rows]
+
+    def get_account_market_samples(self, market_id: str, limit: int = 500) -> List[Dict[str, Any]]:
+        with self._get_connection() as conn:
+            rows = conn.execute("SELECT * FROM account_market_samples WHERE market_id=? ORDER BY timestamp DESC LIMIT ?",
+                                (market_id, int(limit))).fetchall()
+            return [dict(row) for row in rows]
+
+    def get_account_cohort_samples(self, market_id: str, cohort_id: Optional[str] = None,
+                                   limit: int = 500) -> List[Dict[str, Any]]:
+        with self._get_connection() as conn:
+            if cohort_id is None:
+                rows = conn.execute("SELECT * FROM account_cohort_samples WHERE market_id=? ORDER BY timestamp DESC,cohort_id LIMIT ?",
+                                    (market_id, int(limit))).fetchall()
+            else:
+                rows = conn.execute("SELECT * FROM account_cohort_samples WHERE market_id=? AND cohort_id=? ORDER BY timestamp DESC LIMIT ?",
+                                    (market_id, cohort_id, int(limit))).fetchall()
+            return [dict(row) for row in rows]
