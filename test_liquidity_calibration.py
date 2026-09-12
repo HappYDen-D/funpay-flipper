@@ -51,6 +51,7 @@ class TestExactSkuMatcher(unittest.TestCase):
             "Mann Co. Supply Crate Key",
             "mann co supply crate key",
             "Mann Co. Supply Crate Key - Instant Delivery",
+            "&quot;Mann Co. Supply Crate Key&quot;",
             "Mann Box Key",
             "Mann Ko Key",
             "TF2 Key",
@@ -62,6 +63,10 @@ class TestExactSkuMatcher(unittest.TestCase):
             "Ключ от ящика Манн.Ко",
             "Ключ от ящика Манн",
             "Ключ Манн Ко",
+            "Ключ от ящика Mann Co.",
+            "Ключи Mann Co.",
+            "Mann Co Ключ",
+            "Mann Co. Ключи",
             "Ключи от ящика Манн Ко",
             "Манн Ко Ключ",
             "Манко Ключ",
@@ -69,6 +74,8 @@ class TestExactSkuMatcher(unittest.TestCase):
             "🖤 TF2 Ключ от ящика Манн Ко - Mann Co. Supply Crate Key [От 1 шт.]🖤",
             "🔑КЛЮЧ ОТ ЯЩИКА МАНН КО🔑Mann Co. Supply Crate Key🔑 ТФ2🔑TF2 KEY🔑",
             "⚡ [TF2] Ключ от ящика Манн / Mann Co. Supply Crate Key⚡",
+            "🔑 КЛЮЧ MANN CO. | МАНН КО | 🎁 ДЛЯ ЯЩИКОВ TF2 | ⚡ МГНОВЕННО | 💸 ВЫГОДНАЯ ЦЕНА",
+            "💖🌸КЛЮЧ ОТ ЯЩИКА💖🌸 МАНН КО💖🌸",
         ]
         for title in valid_key_titles:
             sku = match_sku(1808, title)
@@ -83,6 +90,7 @@ class TestExactSkuMatcher(unittest.TestCase):
             "Tour of Duty Ticket",
             "tour of duty ticket",
             "Tour of Duty",
+            "&quot;Tour of Duty Ticket&quot;",
             "Командировочный билет",
             "командировочный билет",
             "Командировочные билеты",
@@ -96,6 +104,7 @@ class TestExactSkuMatcher(unittest.TestCase):
             "⚡[TF2] Командировочный билет / Tour of Duty Ticket⚡",
             "🟩【 Командировочный билет 】🟩【 Tour of Duty Ticket 】🟩билет МВМ🟩",
             "Командировочный билет / Tour of Duty Ticket",
+            "⚡️🟥Командировочный билетБыстра⚡️🟥я выдача по трейду 🔥🟥",
         ]
         for title in valid_ticket_titles:
             sku = match_sku(1808, title)
@@ -327,6 +336,93 @@ class TestMarketHistoryStorage(unittest.TestCase):
             self.assertNotIn("SOLD", e["event_type"].upper())
             self.assertNotIn("SALE", e["event_type"].upper())
 
+    def test_partial_node_scan_does_not_cause_false_disappearance(self):
+        """Scanning unrelated nodes (e.g. node 1355) MUST NOT cause TF2 benchmark listings to disappear."""
+        t1 = 1700000000.0
+        t2 = 1700000060.0
+
+        key_lot = {
+            "lot_id": "funpay_key_real",
+            "node_id": 1808,
+            "title": "Mann Co. Supply Crate Key",
+            "price": 180.0,
+            "stock": 5,
+            "seller": "Alice",
+            "url": "https://funpay.com/lots/offer?id=9991",
+        }
+        ticket_lot = {
+            "lot_id": "funpay_ticket_real",
+            "node_id": 1808,
+            "title": "Tour of Duty Ticket",
+            "price": 80.0,
+            "stock": 10,
+            "seller": "Bob",
+            "url": "https://funpay.com/lots/offer?id=9992",
+        }
+        # 1. Record TF2 node 1808 listings
+        self.db.record_market_observation([key_lot, ticket_lot], now=t1)
+        self.assertEqual(len(self.db.get_market_lots_for_sku(SKU_TF2_KEY, active_only=True)), 1)
+        self.assertEqual(len(self.db.get_market_lots_for_sku(SKU_TF2_TICKET, active_only=True)), 1)
+
+        # 2. Simulate polling ChatGPT (node 1355) only, with zero TF2 items
+        chatgpt_lot = {
+            "lot_id": "funpay_chatgpt_1",
+            "node_id": 1355,
+            "title": "ChatGPT Plus Subscription",
+            "price": 1500.0,
+            "seller": "Charlie",
+            "url": "https://funpay.com/lots/offer?id=8881",
+        }
+        summary = self.db.record_market_observation([chatgpt_lot], now=t2, scanned_nodes={1355})
+
+        # TF2 listings must remain active with zero disappearances
+        self.assertEqual(summary["disappeared_count"], 0)
+        self.assertEqual(len(self.db.get_market_lots_for_sku(SKU_TF2_KEY, active_only=True)), 1)
+        self.assertEqual(len(self.db.get_market_lots_for_sku(SKU_TF2_TICKET, active_only=True)), 1)
+        rec_key = self.db.get_market_lot("funpay_key_real")
+        self.assertEqual(rec_key["is_active"], 1)
+
+    def test_last_price_tracks_previous_price_on_change(self):
+        """When price changes, last_price must record the old price, not overwrite with the new one."""
+        t1 = 1700000000.0
+        t2 = 1700000100.0
+
+        lot = {
+            "lot_id": "funpay_lp_1",
+            "node_id": 1808,
+            "title": "Mann Co. Supply Crate Key",
+            "price": 175.0,
+            "seller": "SellerX",
+            "url": "https://funpay.com/lots/offer?id=777",
+        }
+        self.db.record_market_observation([lot], now=t1)
+        rec1 = self.db.get_market_lot("funpay_lp_1")
+        self.assertEqual(rec1["price"], 175.0)
+        self.assertEqual(rec1["last_price"], 175.0)
+
+        # Price changes to 169.0
+        lot_updated = dict(lot, price=169.0)
+        self.db.record_market_observation([lot_updated], now=t2)
+        rec2 = self.db.get_market_lot("funpay_lp_1")
+        self.assertEqual(rec2["price"], 169.0)
+        self.assertEqual(rec2["last_price"], 175.0)  # Preserves previous price!
+
+    def test_observed_at_column_present_and_updated(self):
+        """market_history_lots must contain observed_at column reflecting observation timestamp."""
+        t1 = 1700000000.0
+        lot = {
+            "lot_id": "funpay_obs_1",
+            "node_id": 1808,
+            "title": "Tour of Duty Ticket",
+            "price": 80.0,
+            "seller": "SellerY",
+            "url": "https://funpay.com/lots/offer?id=666",
+        }
+        self.db.record_market_observation([lot], now=t1)
+        rec = self.db.get_market_lot("funpay_obs_1")
+        self.assertIn("observed_at", rec)
+        self.assertEqual(rec["observed_at"], t1)
+
 
 class TestLiquidityEvaluator(unittest.TestCase):
     """Verifies mathematical scoring, confidence boundaries, and isolation."""
@@ -474,6 +570,14 @@ class TestLiquidityEvaluator(unittest.TestCase):
         mad = compute_mad(prices)
         self.assertEqual(mad, 5.0)
 
+    def test_compute_quantile_handles_unsorted_data(self):
+        """Quantile computation must remain strictly accurate even if caller passes unsorted list."""
+        unsorted_prices = [118.0, 100.0, 114.0, 102.0, 112.0, 104.0, 110.0, 106.0, 108.0, 116.0]
+        p50 = compute_quantile(unsorted_prices, 0.50)
+        self.assertEqual(p50, 109.0)
+        p10 = compute_quantile(unsorted_prices, 0.10)
+        self.assertEqual(p10, 101.8)
+
 
 class TestTelegramLiquidityCommand(unittest.IsolatedAsyncioTestCase):
     """Verifies Telegram /liquidity handler output and options."""
@@ -533,6 +637,41 @@ class TestTelegramLiquidityCommand(unittest.IsolatedAsyncioTestCase):
             self.assertIn("Детальный профиль ликвидности", reply)
             self.assertIn("Метрики стакана:", reply)
             self.assertIn("Суб-оценки", reply)
+
+    async def test_cmd_liquidity_russian_aliases_and_safety(self):
+        from unittest.mock import AsyncMock, patch
+        from auto_flipper.assistant_handlers import cmd_liquidity
+
+        # Populate market
+        lots = [
+            {
+                "lot_id": "funpay_ticket_tg_1",
+                "node_id": 1808,
+                "title": "Tour of Duty Ticket",
+                "price": 80.0,
+                "stock": 5,
+                "seller": "TicketSeller",
+                "url": "https://funpay.com/lots/offer?id=555",
+            }
+        ]
+        self.db.record_market_observation(lots, now=1700000000.0, force_sample=True)
+
+        # Test Russian alias "/liquidity билет"
+        msg = AsyncMock()
+        msg.text = "/liquidity билет"
+        with patch("auto_flipper.assistant_handlers.db", self.db):
+            await cmd_liquidity(msg)
+            self.assertTrue(msg.answer.called)
+            reply = msg.answer.call_args[0][0]
+            self.assertIn("Tour of Duty Ticket", reply)
+            self.assertIn("Детальный профиль ликвидности", reply)
+
+        # Test None text safety
+        msg_none = AsyncMock()
+        msg_none.text = None
+        with patch("auto_flipper.assistant_handlers.db", self.db):
+            await cmd_liquidity(msg_none)
+            self.assertFalse(msg_none.answer.called)
 
 
 if __name__ == "__main__":

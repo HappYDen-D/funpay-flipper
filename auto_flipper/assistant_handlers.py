@@ -27,6 +27,8 @@ async def alerts(message: Message):
 
 @router.message(Command('liquidity'))
 async def cmd_liquidity(message: Message):
+    if not message.text:
+        return
     parts = message.text.split(maxsplit=1)
     target_arg = parts[1].strip().lower() if len(parts) > 1 else ""
 
@@ -41,9 +43,15 @@ async def cmd_liquidity(message: Message):
     # Detailed single SKU mode if requested
     if target_arg:
         sku = None
-        if target_arg in (SKU_TF2_KEY, "key", "5021", "5021;6", "mann co"):
+        if target_arg in (
+            SKU_TF2_KEY, "key", "keys", "5021", "5021;6", "mann co", "mann",
+            "ключ", "ключи", "манн", "манн ко", "манко"
+        ):
             sku = SKU_TF2_KEY
-        elif target_arg in (SKU_TF2_TICKET, "ticket", "725", "725;6", "tour"):
+        elif target_arg in (
+            SKU_TF2_TICKET, "ticket", "tickets", "725", "725;6", "tour",
+            "билет", "билеты", "тикет", "тикеты", "мвм", "mvm"
+        ):
             sku = SKU_TF2_TICKET
         else:
             sku = target_arg

@@ -1022,13 +1022,13 @@ class FunPayClient:
             # 3. Title / Description
             desc_m = re.search(r'class=["\']tc-desc-text["\'][^>]*>(.*?)</div>', body, re.DOTALL | re.IGNORECASE)
             raw_title = desc_m.group(1) if desc_m else ""
-            clean_title = re.sub(r'<[^>]+>', '', raw_title).strip()
+            clean_title = html.unescape(re.sub(r'<[^>]+>', '', raw_title)).strip()
             clean_title = re.sub(r'\s+', ' ', clean_title)
 
             # 4. Seller
             seller_m = re.search(r'class=["\']media-user-name["\'][^>]*>(.*?)</div>', body, re.DOTALL | re.IGNORECASE)
             raw_seller = seller_m.group(1) if seller_m else "Неизвестен"
-            seller = re.sub(r'<[^>]+>', '', raw_seller).strip()
+            seller = html.unescape(re.sub(r'<[^>]+>', '', raw_seller)).strip()
 
             # 5. Rating & Reviews
             rating_m = re.search(r'rating-stars\s+rating-(\d+)', body, re.IGNORECASE)

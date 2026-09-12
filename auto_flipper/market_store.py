@@ -28,14 +28,15 @@ def compute_quantile(sorted_data: List[float], q: float) -> float:
     """Computes empirical quantile with linear interpolation on sorted non-empty data."""
     if not sorted_data:
         return 0.0
-    if len(sorted_data) == 1:
-        return float(sorted_data[0])
-    n = len(sorted_data)
+    data = sorted(sorted_data)
+    if len(data) == 1:
+        return float(data[0])
+    n = len(data)
     idx = q * (n - 1)
     low = int(idx)
     high = min(low + 1, n - 1)
     weight = idx - low
-    val = sorted_data[low] * (1.0 - weight) + sorted_data[high] * weight
+    val = data[low] * (1.0 - weight) + data[high] * weight
     return round(float(val), 2)
 
 
@@ -69,6 +70,7 @@ class MarketHistoryStore:
                 node_id INTEGER DEFAULT 1808,
                 first_seen_at REAL NOT NULL,
                 last_seen_at REAL NOT NULL,
+                observed_at REAL NOT NULL,
                 is_active INTEGER NOT NULL DEFAULT 1,
                 disappeared_at REAL,
                 reappearance_count INTEGER NOT NULL DEFAULT 0,
@@ -115,12 +117,21 @@ class MarketHistoryStore:
         for sql in statements:
             conn.execute(sql)
 
+        # Migration check for observed_at if table was created in an older run
+        try:
+            cols = [r[1] for r in conn.execute("PRAGMA table_info(market_history_lots)").fetchall()]
+            if "observed_at" not in cols:
+                conn.execute("ALTER TABLE market_history_lots ADD COLUMN observed_at REAL DEFAULT 0.0")
+        except Exception:
+            pass
+
     def record_market_observation(
         self,
         observed_lots: List[Dict[str, Any]],
         now: Optional[float] = None,
         sample_interval_seconds: float = 180.0,
         force_sample: bool = False,
+        scanned_nodes: Optional[Set[int]] = None,
     ) -> Dict[str, Any]:
         """
         Records a single market observation scan.
@@ -133,12 +144,23 @@ class MarketHistoryStore:
         # 1. Filter and classify lots by SKU
         sku_lots: Dict[str, List[Dict[str, Any]]] = {}
         for lot in observed_lots:
-            node_id = lot.get("node_id", 1808)
+            node_id = int(lot.get("node_id", 1808))
             title = lot.get("title", "")
             sku = match_sku(node_id, title)
             if sku == SKU_UNKNOWN:
                 continue
             sku_lots.setdefault(sku, []).append(lot)
+
+        # Determine which node_ids were actually scanned in this observation
+        if scanned_nodes is not None:
+            active_scanned_nodes = set(scanned_nodes)
+        elif observed_lots:
+            active_scanned_nodes = {int(l.get("node_id", 1808)) for l in observed_lots}
+        else:
+            # Fallback for empty scans without explicit nodes (e.g. test harness simulating empty market)
+            active_scanned_nodes = {1808}
+
+        from auto_flipper.sku_matcher import SKU_NODE_MAP
 
         summary = {
             "timestamp": ts,
@@ -151,11 +173,14 @@ class MarketHistoryStore:
         }
 
         # Process each observed benchmark SKU
-        # Also handle any benchmark SKU that had active listings before but 0 listings now
-        all_candidate_skus = set(sku_lots.keys()) | set(BENCHMARK_SKUS)
+        # Only evaluate SKUs whose node was actually part of this scan to prevent false disappearances
+        candidate_skus = set(sku_lots.keys())
+        for b_sku in BENCHMARK_SKUS:
+            if SKU_NODE_MAP.get(b_sku, 1808) in active_scanned_nodes:
+                candidate_skus.add(b_sku)
 
         with self._lock, self._get_connection() as conn:
-            for sku in all_candidate_skus:
+            for sku in candidate_skus:
                 current_lots = sku_lots.get(sku, [])
                 current_map = {l["lot_id"]: l for l in current_lots if "lot_id" in l}
 
@@ -207,8 +232,9 @@ class MarketHistoryStore:
                             """INSERT INTO market_history_lots
                                (lot_id, canonical_sku, title, seller, seller_rating, seller_reviews,
                                 price, currency, stock, url, node_id, first_seen_at, last_seen_at,
-                                is_active, disappeared_at, reappearance_count, price_changes, last_price)
-                               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, NULL, 0, 0, ?)""",
+                                observed_at, is_active, disappeared_at, reappearance_count,
+                                price_changes, last_price)
+                               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, NULL, 0, 0, ?)""",
                             (
                                 lot_id,
                                 sku,
@@ -221,6 +247,7 @@ class MarketHistoryStore:
                                 stock,
                                 url,
                                 node_id,
+                                ts,
                                 ts,
                                 ts,
                                 price,
@@ -248,6 +275,7 @@ class MarketHistoryStore:
 
                         price_changed = abs(existing["price"] - price) > 0.001
                         price_changes = existing["price_changes"] + (1 if price_changed else 0)
+                        last_price = existing["price"] if price_changed else existing.get("last_price", price)
                         if price_changed:
                             conn.execute(
                                 """INSERT INTO market_lot_events
@@ -270,6 +298,7 @@ class MarketHistoryStore:
                         conn.execute(
                             """UPDATE market_history_lots
                                SET last_seen_at = ?,
+                                   observed_at = ?,
                                    is_active = 1,
                                    disappeared_at = NULL,
                                    price = ?,
@@ -284,6 +313,7 @@ class MarketHistoryStore:
                                WHERE lot_id = ?""",
                             (
                                 ts,
+                                ts,
                                 price,
                                 stock,
                                 title,
@@ -292,7 +322,7 @@ class MarketHistoryStore:
                                 seller_reviews,
                                 reappearance_count,
                                 price_changes,
-                                price,
+                                last_price,
                                 lot_id,
                             ),
                         )

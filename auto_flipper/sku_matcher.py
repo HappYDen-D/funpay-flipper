@@ -8,6 +8,7 @@ Supported benchmark SKUs:
 Rule: Fail-closed on any ambiguity, modification, bundle, or missing info -> 'UNKNOWN'.
 No LLM guessing or fuzzy approximations.
 """
+import html
 import re
 import unicodedata
 from typing import Optional, Set
@@ -17,6 +18,11 @@ SKU_TF2_TICKET = "tf2:725;6"
 SKU_UNKNOWN = "UNKNOWN"
 
 BENCHMARK_SKUS = (SKU_TF2_KEY, SKU_TF2_TICKET)
+
+SKU_NODE_MAP = {
+    SKU_TF2_KEY: 1808,
+    SKU_TF2_TICKET: 1808,
+}
 
 BENCHMARK_SKU_NAMES = {
     SKU_TF2_KEY: "Mann Co. Supply Crate Key",
@@ -52,7 +58,7 @@ _GENERAL_EXCLUSIONS = [
     r"\b(расширитель|expander|рюкзак|backpack)\b",
     r"\b(ярлык|name\s*tag|description\s*tag)\b",
     r"\b(duck\s*journal|утиный\s*журнал)\b",
-    r"\b(voucher|ваучер|купон)\b",  # Squad surplus voucher is sku 727;6, not ticket 725;6
+    r"\b(voucher|ваучер|купон|талон)\b",  # Squad surplus voucher is sku 727;6, not ticket 725;6
     # Ticket Boy cosmetic
     r"\b(билетер|билет[её]р|ticket\s*boy)\b",
     # Random / unverified game keys
@@ -66,6 +72,11 @@ _KEY_PATTERNS = [
     r"mann\s*ko\s*keys?",
     r"ключ[иа]?\s*(от\s*ящика\s*)?манн(\s*ко|\.ко)?",
     r"ключ[иа]?\s*ящика\s*манн(\s*ко|\.ко)?",
+    r"ключ[иа]?\s*(от\s*ящика\s*)?mann\s*(co|\.co)?",
+    r"mann\s*(co|\.co)?\s*ключ[иа]?",
+    r"ключ[иа]?\s*mann\b",
+    r"\bmann\s*ключ[иа]?",
+    r"ключ[иа]?\s*(для\s*ящиков|от\s*ящиков)\s*(тф2?|tf2?)",
     r"\b(тф2?|tf2?)\s*ключ[иа]?\b",
     r"\bключ[иа]?\s*(тф2?|tf2?)\b",
     r"\b(тф2?|tf2?)\s*keys?\b",
@@ -108,22 +119,43 @@ def match_sku(node_id: int, title: str) -> str:
     if node_id != 1808 or not isinstance(title, str) or not title.strip():
         return SKU_UNKNOWN
 
-    # Normalize unicode (NFC preserves precomposed Cyrillic characters like 'й')
-    t = unicodedata.normalize("NFC", title.lower())
+    # Unescape HTML entities (e.g. &quot; -> ", &#039; -> ') and normalize unicode
+    unescaped = html.unescape(title)
+    t = unicodedata.normalize("NFC", unescaped.lower())
 
-    # Check general fail-closed exclusions
+    # Check general fail-closed exclusions on raw normalized title
     for exc in _GENERAL_EXCLUSIONS:
         if re.search(exc, t, re.IGNORECASE):
             return SKU_UNKNOWN
 
+    # Normalized text with non-alphanumerics (emojis, borders) replaced by spaces
+    t_clean = re.sub(r"[^\w\sа-яёА-ЯЁa-zA-Z0-9]", " ", t)
+    t_clean = re.sub(r"\s+", " ", t_clean).strip()
+
+    # Re-check exclusions on clean title to catch separated keywords
+    for exc in _GENERAL_EXCLUSIONS:
+        if re.search(exc, t_clean, re.IGNORECASE):
+            return SKU_UNKNOWN
+
     # Exclude cases/crates/boxes that do not explicitly mention being a key
-    if re.search(r"\b(ящик|сундук|crate|case|box)\b", t, re.IGNORECASE):
-        if not re.search(r"\b(ключ|ключи|key|keys)\b", t, re.IGNORECASE):
+    if re.search(r"\b(ящик|сундук|crate|case|box)\b", t, re.IGNORECASE) or re.search(
+        r"\b(ящик|сундук|crate|case|box)\b", t_clean, re.IGNORECASE
+    ):
+        if not (
+            re.search(r"\b(ключ|ключи|key|keys)\b", t, re.IGNORECASE)
+            or re.search(r"\b(ключ|ключи|key|keys)\b", t_clean, re.IGNORECASE)
+        ):
             return SKU_UNKNOWN
 
     # Detect presence of key vs ticket terms
-    has_key_word = bool(re.search(r"\b(ключ|ключи|key|keys)\b", t, re.IGNORECASE))
-    has_ticket_word = bool(re.search(r"\b(билет|билеты|билета|билетов|ticket|tickets|duty)\b", t, re.IGNORECASE))
+    has_key_word = bool(
+        re.search(r"\b(ключ|ключи|key|keys)\b", t, re.IGNORECASE)
+        or re.search(r"\b(ключ|ключи|key|keys)\b", t_clean, re.IGNORECASE)
+    )
+    has_ticket_word = bool(
+        re.search(r"билет|ticket|duty", t, re.IGNORECASE)
+        or re.search(r"билет|ticket|duty", t_clean, re.IGNORECASE)
+    )
 
     # Mixed bundle / ambiguous mention of both key and ticket -> UNKNOWN
     if has_key_word and has_ticket_word:
@@ -133,7 +165,7 @@ def match_sku(node_id: int, title: str) -> str:
     is_key = False
     if has_key_word:
         for pat in _KEY_PATTERNS:
-            if re.search(pat, t, re.IGNORECASE):
+            if re.search(pat, t, re.IGNORECASE) or re.search(pat, t_clean, re.IGNORECASE):
                 is_key = True
                 break
 
@@ -141,7 +173,7 @@ def match_sku(node_id: int, title: str) -> str:
     is_ticket = False
     if has_ticket_word:
         for pat in _TICKET_PATTERNS:
-            if re.search(pat, t, re.IGNORECASE):
+            if re.search(pat, t, re.IGNORECASE) or re.search(pat, t_clean, re.IGNORECASE):
                 is_ticket = True
                 break
 

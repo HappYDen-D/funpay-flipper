@@ -57,7 +57,7 @@ def run_live_smoke():
     # Ingest into a fresh temporary database to test real end-to-end evaluation
     with tempfile.TemporaryDirectory(prefix="live-smoke-mkt-") as tmp_dir:
         db = Database(f"{tmp_dir}/live_smoke.db")
-        summary = db.record_market_observation(lots, force_sample=True)
+        summary = db.record_market_observation(lots, force_sample=True, scanned_nodes={1808})
         print(f"\nObservation recorded to market history: {summary}")
 
         print("\n" + "=" * 60)
