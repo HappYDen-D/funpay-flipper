@@ -228,6 +228,9 @@ class Database(SafetyStore):
 
             self.init_safety_schema(conn)
 
+            # Migration: Idempotently remove any legacy sensitive golden_key from flipper_settings
+            cursor.execute("DELETE FROM flipper_settings WHERE key = 'golden_key'")
+
             # Populate initial default settings if not set
             cursor.execute("SELECT key FROM flipper_settings")
             existing_keys = {row["key"] for row in cursor.fetchall()}
@@ -888,6 +891,22 @@ class Database(SafetyStore):
             cursor = conn.cursor()
             cursor.execute("SELECT key, value FROM flipper_settings")
             return {row["key"]: row["value"] for row in cursor.fetchall()}
+
+    def purge_legacy_secrets(self) -> int:
+        """Idempotently purges legacy secrets (such as golden_key) from flipper_settings table."""
+        with self._lock, self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM flipper_settings WHERE key = 'golden_key'")
+            deleted = cursor.rowcount
+            conn.commit()
+            return deleted
+
+    def is_emergency_stopped(self) -> bool:
+        val = self.get_setting("is_emergency_stopped", "0")
+        return str(val).strip().lower() in ("1", "true", "yes")
+
+    def set_emergency_stopped(self, stopped: bool):
+        self.set_setting("is_emergency_stopped", "1" if stopped else "0")
 
     def log_action(self, action: str, details: str):
         with self._lock, self._get_connection() as conn:

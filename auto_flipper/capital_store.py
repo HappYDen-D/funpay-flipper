@@ -86,7 +86,7 @@ class CapitalStore:
                           status['ledger_fingerprint'], int(purchasing_available)))
         return self.capital_status(dry_run)
 
-    def capital_status(self, dry_run, supplier_group='', category_id='', conn=None):
+    def capital_status(self, dry_run, supplier_group='', category_id='', conn=None, emergency_stopped=None):
         """Amounts are integer kopecks; ``conn`` permits atomic admission checks.
 
         Session opening equity is the high water of realized capital, never the
@@ -98,7 +98,7 @@ class CapitalStore:
         environment = _environment(dry_run)
         if conn is None:
             with self._get_connection() as connection:
-                return self.capital_status(dry_run, supplier_group, category_id, conn=connection)
+                return self.capital_status(dry_run, supplier_group, category_id, conn=connection, emergency_stopped=emergency_stopped)
         now = time.time()
         seed = conn.execute('SELECT * FROM capital_seed WHERE dry_run=?', (environment,)).fetchone()
         proof = conn.execute('SELECT * FROM capital_cash_proof WHERE dry_run=?', (environment,)).fetchone()
@@ -240,6 +240,23 @@ class CapitalStore:
             available = min(max(0, ledger_cash), proof['amount']) if balance_verified else 0
             purchase_available = bool(balance_verified and proof['purchasing_available'])
             age = proof_age
+        stopped = bool(emergency_stopped) if emergency_stopped is not None else False
+        if not stopped:
+            try:
+                row = conn.execute("SELECT value FROM flipper_settings WHERE key='is_emergency_stopped'").fetchone()
+                if row and row[0] is not None:
+                    stopped = str(row[0]).strip().lower() in ('1', 'true', 'yes')
+            except Exception:
+                pass
+        if not stopped and hasattr(self, 'is_emergency_stopped'):
+            val = getattr(self, 'is_emergency_stopped')
+            if callable(val):
+                stopped = bool(val())
+            elif isinstance(val, bool):
+                stopped = val
+            elif isinstance(val, str):
+                stopped = val.strip().lower() in ('1', 'true', 'yes')
+
         return {
             'seeded': bool(seed), 'initial_capital': initial, 'ledger_cash': ledger_cash,
             'realized_pnl': realized_pnl, 'realized_capital': realized_capital,
@@ -256,10 +273,11 @@ class CapitalStore:
             'supplier_quarantined': supplier_quarantined,
             'unknown_loss_supplier': unknown_loss_supplier,
             'errors': sorted(set(errors)),
+            'emergency_stopped': stopped,
         }
 
-    def capital_snapshot(self, dry_run, supplier_group='', category_id='', conn=None):
-        state = self.capital_status(dry_run, supplier_group, category_id, conn=conn)
+    def capital_snapshot(self, dry_run, supplier_group='', category_id='', conn=None, emergency_stopped=None):
+        state = self.capital_status(dry_run, supplier_group, category_id, conn=conn, emergency_stopped=emergency_stopped)
         return {
             'available_cash': state['available_cash'],
             'conservative_equity': state['conservative_equity'],
@@ -274,5 +292,6 @@ class CapitalStore:
             'purchasing_available': state['purchasing_available'],
             'reconciliation_ok': state['reconciliation_ok'],
             'unresolved_purchase': state['unresolved_purchase'],
-            'emergency_stopped': False, 'supplier_quarantined': state['supplier_quarantined'] or state['unknown_loss_supplier'],
+            'emergency_stopped': state['emergency_stopped'],
+            'supplier_quarantined': state['supplier_quarantined'] or state['unknown_loss_supplier'],
         }

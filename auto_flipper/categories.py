@@ -32,6 +32,8 @@ class CategoryDefinition:
     template_title: str = ""                     # Eye-catching title for FunPay listing
     template_desc: str = ""                      # High-converting description for FunPay listing
     template_delivery: str = ""                  # Buyer order fulfillment delivery template
+    is_deprecated: bool = False                  # Flag for legacy or unverified sections
+    deprecated_reason: str = ""                  # Reason why category is deprecated
 
 
 CATEGORY_REGISTRY: Dict[str, CategoryDefinition] = {
@@ -455,15 +457,16 @@ CATEGORY_REGISTRY: Dict[str, CategoryDefinition] = {
 # for reconciliation of historical inventory, but cannot authorize new purchases.
 for _excluded in ('chatgpt', 'discord', 'cursor', 'exitlag', 'tg_premium'):
     CATEGORY_REGISTRY[_excluded].enabled_default = False
-for _cid, _name, _node, _keywords in (
-    ('tf2_items', 'TF2: предметы с проверенным выкупом', 1808, ['key', 'ключ', 'ticket', 'билет', 'expander', 'расширитель']),
-    ('mm2_items', 'MM2: предметы, наблюдение спроса', 925, ['icewing', 'iceblaster', 'godly']),
+for _cid, _name, _node, _keywords, _dep, _reason, _enabled in (
+    ('tf2_items', 'TF2: предметы с проверенным выкупом', 1808, ['key', 'ключ', 'ticket', 'билет', 'expander', 'расширитель'], False, '', True),
+    ('mm2_items', 'MM2: предметы, наблюдение спроса (устаревший node 925 / 404)', 925, ['icewing', 'iceblaster', 'godly'], True, 'FunPay node 925 returned 404; unverified catalog section disabled for live purchases', False),
 ):
     CATEGORY_REGISTRY[_cid] = CategoryDefinition(
         id=_cid, name=_name, node_id=_node, game_id=0, item_type='trade_item',
         min_buy_price=.01, max_buy_price=1_000_000_000, market_benchmark=0,
         price_floor=0, markup_discount=1, min_profit=10, min_margin_pct=15,
-        min_seller_rating=4.5, min_seller_reviews=10, enabled_default=True,
+        min_seller_rating=4.5, min_seller_reviews=10, enabled_default=_enabled,
+        is_deprecated=_dep, deprecated_reason=_reason,
         fee_rate=0, allowed_keywords=_keywords,
         blacklisted_keywords=['аренда', 'подписка', 'subscription', 'куплю'])
 
@@ -484,9 +487,12 @@ def get_category_by_node(node_id: int) -> Optional[CategoryDefinition]:
     return None
 
 
-def get_all_target_node_ids() -> List[int]:
-    """Returns all FunPay node IDs handled by the multi-category flipper."""
-    nodes = [cat.node_id for cat in CATEGORY_REGISTRY.values()]
+def get_all_target_node_ids(include_deprecated: bool = False) -> List[int]:
+    """Returns all active, non-deprecated FunPay node IDs handled by the multi-category flipper."""
+    nodes = [
+        cat.node_id for cat in CATEGORY_REGISTRY.values()
+        if include_deprecated or (not getattr(cat, 'is_deprecated', False) and cat.node_id not in (0, 925))
+    ]
     if 3559 not in nodes:
         nodes.append(3559)
     return nodes

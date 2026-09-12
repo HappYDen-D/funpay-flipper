@@ -78,12 +78,17 @@ class SafetyStore(CapitalStore, ManualRouteStore):
             if cursor.rowcount != 1:
                 raise ValueError('Unknown candidate')
 
-    def claim_purchase(self, lot_id, category_id, price, dry_run, reviewed_at=None, *, candidate=None):
+    def claim_purchase(self, lot_id, category_id, price, dry_run, reviewed_at=None, *, candidate=None, emergency_stopped=None):
         """One unresolved checkout globally, and no automatic second attempt for a lot.
 
         BEGIN IMMEDIATE serializes the check and claim across processes. A failed
         or unknown attempt remains claimed until an explicit new business decision.
         """
+        if not dry_run:
+            from auto_flipper.categories import get_category_by_id
+            cat = get_category_by_id(category_id)
+            if not cat or getattr(cat, 'is_deprecated', False) or category_id == 'mm2_items' or getattr(cat, 'node_id', 0) == 925:
+                raise ValueError('CATEGORY_DEPRECATED_FOR_REAL_PURCHASE')
         kopecks(price)
         with self._lock, self._get_connection() as conn:
             conn.execute('BEGIN IMMEDIATE')
@@ -116,7 +121,7 @@ class SafetyStore(CapitalStore, ManualRouteStore):
                 result = evaluate_exit(review, price, min_profit=10, min_roi=.15)
                 if not result['admitted']:
                     raise ValueError('; '.join(result['reasons']))
-                check_capital(self, dry_run, review, category_id, price, conn=conn)
+                check_capital(self, dry_run, review, category_id, price, conn=conn, emergency_stopped=emergency_stopped)
                 quote = review['exit_quote']
                 used = conn.execute('''SELECT COUNT(*) FROM exit_reservations r
                     JOIN purchase_intents p USING(intent_id)

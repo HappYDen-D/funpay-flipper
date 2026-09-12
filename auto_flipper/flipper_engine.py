@@ -233,6 +233,7 @@ class FlipperEngine(AssistantWorkflow):
         self.client = FunPayClient()
         self._load_settings()
         self.client.action_authorizer = lambda action: self.can_act(action) and not self.dry_run
+        self.client.emergency_stop_checker = lambda: bool(self.is_emergency_stopped) or (hasattr(db, 'is_emergency_stopped') and bool(db.is_emergency_stopped()))
         self._is_running = False
         self._loop_task: Optional[asyncio.Task] = None
         self._bot = None
@@ -408,6 +409,8 @@ class FlipperEngine(AssistantWorkflow):
         reasons = []
         if cat.id in EXCLUDED_CATEGORIES:
             reasons.append('SUBSCRIPTIONS_EXCLUDED')
+        if not self.dry_run and (getattr(cat, 'is_deprecated', False) or cat.id == 'mm2_items' or cat.node_id == 925):
+            reasons.append('CATEGORY_DEPRECATED_FOR_REAL_PURCHASE')
         if not db.is_category_enabled(cat.id):
             reasons.append('CATEGORY_DISABLED')
         if cat.node_id != node_id:
@@ -982,7 +985,13 @@ class FlipperEngine(AssistantWorkflow):
         """
         from auto_flipper.safety import EXCLUDED_CATEGORIES
         enabled_cat_ids = [c for c in db.get_enabled_categories() if c not in EXCLUDED_CATEGORIES]
-        target_nodes = [CATEGORY_REGISTRY[cid].node_id for cid in enabled_cat_ids if cid in CATEGORY_REGISTRY]
+        target_nodes = [
+            CATEGORY_REGISTRY[cid].node_id
+            for cid in enabled_cat_ids
+            if cid in CATEGORY_REGISTRY
+            and not getattr(CATEGORY_REGISTRY[cid], 'is_deprecated', False)
+            and CATEGORY_REGISTRY[cid].node_id not in (0, 925)
+        ]
         if "chatgpt" in enabled_cat_ids and 3559 not in target_nodes:
             target_nodes.append(3559)
 

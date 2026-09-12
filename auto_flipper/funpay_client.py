@@ -41,6 +41,7 @@ class FunPayClient:
     def __init__(self, golden_key: Optional[str] = None):
         self.action_authorizer = None
         self.checkout_quote_validator = None
+        self.emergency_stop_checker = None
         self.golden_key = golden_key or FUNPAY_GOLDEN_KEY
         self.headers = dict(DEFAULT_HEADERS)
         self.headers["X-Requested-With"] = "XMLHttpRequest"
@@ -49,6 +50,10 @@ class FunPayClient:
         self._order_node_cache: Dict[str, int] = {}
         self._proxy_url = os.environ.get("FUNPAY_PROXY", "").strip()
         self.last_transport_issue = None
+
+    def __repr__(self) -> str:
+        key_status = "set" if self.golden_key else "empty"
+        return f"<FunPayClient proxy={bool(self._proxy_url)} golden_key={key_status}>"
 
     def _http_client(self, *, follow_redirects=False):
         # Pin one explicit route across account, market, checkout and delivery calls.
@@ -530,9 +535,13 @@ class FunPayClient:
                         or quote.get('lot_id') != raw_lot_num or quote.get('quantity') != 1
                         or type(quote.get('quantity')) is not int):
                     return {"success": False, "dry_run": False, "status": "FAILED", "error": "CHECKOUT_PRODUCT_CHANGED_OR_UNKNOWN"}
+                if self.emergency_stop_checker and self.emergency_stop_checker():
+                    return {"success": False, "dry_run": False, "status": "FAILED", "error": "EMERGENCY_STOP_BEFORE_PAYMENT"}
                 if preflight is not None:
                     preflight()
                 self._require_action('checkout')
+                if self.emergency_stop_checker and self.emergency_stop_checker():
+                    return {"success": False, "dry_run": False, "status": "FAILED", "error": "EMERGENCY_STOP_BEFORE_PAYMENT"}
                 request_sent = True
                 checkout_resp = await client.post(FUNPAY_ORDERS_CHECKOUT_URL, data=payload)
                 problem = self._response_problem(checkout_resp)

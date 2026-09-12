@@ -935,9 +935,10 @@ class TestFlipperHandlers(unittest.IsolatedAsyncioTestCase):
         cb = self._create_mock_callback("flip_cat_enable_all")
         db.set_category_enabled("steam", False)
         await cb_enable_all_categories(cb)
-        for cat_id in CATEGORY_REGISTRY.keys():
+        for cat_id, cat in CATEGORY_REGISTRY.items():
             from auto_flipper.safety import EXCLUDED_CATEGORIES
-            self.assertEqual(db.is_category_enabled(cat_id), cat_id not in EXCLUDED_CATEGORIES)
+            expected_enabled = cat_id not in EXCLUDED_CATEGORIES and not getattr(cat, 'is_deprecated', False)
+            self.assertEqual(db.is_category_enabled(cat_id), expected_enabled)
 
     async def test_cb_pnl_categories(self):
         cb = self._create_mock_callback("flip_pnl_categories")

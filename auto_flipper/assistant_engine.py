@@ -9,7 +9,15 @@ from resale_intelligence.models.risk_gate import RiskSnapshot, assess_purchase
 
 class AssistantWorkflow:
     def can_act(self, action):
-        return action_allowed(self.mode, self.is_emergency_stopped, action)
+        stopped = bool(self.is_emergency_stopped)
+        if not stopped:
+            try:
+                database = getattr(self, 'db', db)
+                if hasattr(database, 'is_emergency_stopped'):
+                    stopped = bool(database.is_emergency_stopped())
+            except Exception:
+                pass
+        return action_allowed(self.mode, stopped, action)
 
     def evaluate_reviewed_candidate(self, candidate):
         payload, review = candidate['payload'], candidate['review']
@@ -44,7 +52,7 @@ class AssistantWorkflow:
             raise ValueError('Unknown candidate')
         evaluation = self.evaluate_reviewed_candidate(candidate)
         intent = db.claim_purchase(lot_id, evaluation.category_id, candidate['payload']['price'],
-            self.dry_run, candidate['reviewed_at'], candidate=candidate)
+            self.dry_run, candidate['reviewed_at'], candidate=candidate, emergency_stopped=self.is_emergency_stopped)
         if not intent:
             raise ValueError('PURCHASE_ALREADY_CLAIMED_OR_RECONCILIATION_REQUIRED')
         return intent
@@ -99,14 +107,14 @@ class AssistantWorkflow:
             account = await self.client.get_account_info()
             if account.get('is_authenticated') is not True or 'balance_available' not in account:
                 raise ValueError('BALANCE_UNKNOWN')
-            actual_available = kopecks(account['balance_available'])
-        check_capital(db, dry_run, review, evaluation.category_id, payload['price'], available_cash=actual_available)
+        check_capital(db, dry_run, review, evaluation.category_id, payload['price'],
+                      available_cash=actual_available, emergency_stopped=self.is_emergency_stopped)
         # Fresh check after network reads, immediately before the durable reservation.
         self.evaluate_reviewed_candidate(candidate)
         if not self.can_act('checkout') or dry_run != self.dry_run:
             return None
         reserved_capital = db.capital_status(dry_run)
-        intent_id = db.claim_purchase(payload['lot_id'],evaluation.category_id,payload['price'],dry_run,candidate['reviewed_at'],candidate=candidate)
+        intent_id = db.claim_purchase(payload['lot_id'],evaluation.category_id,payload['price'],dry_run,candidate['reviewed_at'],candidate=candidate, emergency_stopped=self.is_emergency_stopped)
         if not intent_id:
             raise ValueError('PURCHASE_ALREADY_CLAIMED_OR_RECONCILIATION_REQUIRED')
         try:
@@ -118,6 +126,8 @@ class AssistantWorkflow:
                 self.evaluate_reviewed_candidate(fresh)
                 if not self.can_act('checkout') or dry_run != self.dry_run:
                     raise ValueError('MODE_CHANGED_BEFORE_PAYMENT')
+                if self.is_emergency_stopped or (hasattr(db, 'is_emergency_stopped') and db.is_emergency_stopped()):
+                    raise ValueError('EMERGENCY_STOP_BEFORE_PAYMENT')
                 capital = db.capital_status(dry_run)
                 if (capital['ledger_fingerprint'] != reserved_capital['ledger_fingerprint']
                         or not capital['balance_verified'] or not capital['purchasing_available']

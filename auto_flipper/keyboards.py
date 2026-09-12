@@ -212,7 +212,7 @@ def settings_keyboard(status: Dict[str, Any]) -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text=f"🎯 Мин. профит: {min_p} ₽ ✏️", callback_data="flip_edit_profit"),
             ],
             [
-                InlineKeyboardButton(text="🔑 Настроить Golden Key", callback_data="flip_edit_key"),
+                InlineKeyboardButton(text="🔑 Golden Key (инфо)", callback_data="flip_edit_key"),
                 InlineKeyboardButton(text="« В главное меню", callback_data="flip_main"),
             ],
         ]

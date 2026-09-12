@@ -66,6 +66,7 @@ class PilotIntegration(unittest.IsolatedAsyncioTestCase):
         state = self.db.capital_status(True)
         self.assertEqual((state['realized_capital'], state['available_cash'], state['open_risk']), (102000,102000,0))
         # 96+5 exceeds the original 100 risk limit, fits the earned 102 limit.
+        self.db.set_setting('category_enabled_mm2_items', '1')
         self.candidate('funpay_2', 96, evidence('MM2:Icewing', 'bid-2', '125'), 'mm2_items')
         second = self.buy('funpay_2', 'SIM-2'); self.settle(second, 'MM2:Icewing', 125)
         self.assertEqual(self.db.capital_status(True)['realized_capital'], 104400)

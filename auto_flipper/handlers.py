@@ -1007,12 +1007,14 @@ async def cb_edit_key_prompt(callback: CallbackQuery, state: FSMContext):
         await callback.answer("⛔ Доступ запрещен (только для администраторов)", show_alert=True)
         return
 
-    await state.set_state(KeyInputState.waiting_for_key)
-    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="« Отмена", callback_data="flip_settings")]])
+    await state.clear()
+    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="« Назад в настройки", callback_data="flip_settings")]])
     await callback.message.edit_text(
         "🔑 <b>Настройка Golden Key для FunPay</b>\n\n"
-        "Отправьте ваш <code>golden_key</code> (из cookie браузера на funpay.com).\n"
-        "Он используется для проверки заказов, чекаута и автовыдачи.",
+        "Секрет задаётся исключительно локально через переменную окружения <code>FUNPAY_GOLDEN_KEY</code> "
+        "(в файле <code>.env</code> или окружении системы).\n\n"
+        "⚠️ <b>В целях безопасности отправка golden_key через Telegram запрещена.</b> "
+        "Никогда не отправляйте секретные ключи сессии в чат.",
         reply_markup=kb,
         parse_mode="HTML",
     )
@@ -1021,23 +1023,13 @@ async def cb_edit_key_prompt(callback: CallbackQuery, state: FSMContext):
 
 @router.message(KeyInputState.waiting_for_key)
 async def handle_key_input(message: Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        await state.clear()
-        await message.answer("⛔ Доступ запрещен.", parse_mode="HTML")
-        return
-
-    if not message.text:
-        return
-    key = message.text.strip()
-    if len(key) >= 16:
-        flipper_engine.client.golden_key = key
-        db.set_setting("golden_key", key)
-        await state.clear()
-        await message.answer("✅ <b>Golden Key успешно сохранен и применен!</b>", parse_mode="HTML")
-        status = flipper_engine.get_status_summary()
-        await message.answer(format_dashboard_text(status, message.from_user.id), reply_markup=main_dashboard_keyboard(status), parse_mode="HTML")
-    else:
-        await message.answer("⚠️ Слишком короткий ключ. Проверьте правильность:")
+    await state.clear()
+    await message.answer(
+        "⛔ <b>Отправка golden_key через Telegram отключена в целях безопасности.</b>\n\n"
+        "Секрет задаётся локально через переменную окружения <code>FUNPAY_GOLDEN_KEY</code> (в файле <code>.env</code>). "
+        "Бот не сохраняет секреты из сообщений в базу данных.",
+        parse_mode="HTML",
+    )
 
 
 # ─────────────────────────────────────────────────────────────
@@ -1082,8 +1074,10 @@ async def cb_enable_all_categories(callback: CallbackQuery):
         await callback.answer("⛔ Доступ запрещен (только для администраторов)", show_alert=True)
         return
 
-    for cat_id in CATEGORY_REGISTRY.keys():
-        db.set_category_enabled(cat_id, True)
+    from auto_flipper.safety import EXCLUDED_CATEGORIES
+    for cat_id, cat in CATEGORY_REGISTRY.items():
+        if not getattr(cat, 'is_deprecated', False) and cat_id not in EXCLUDED_CATEGORIES:
+            db.set_category_enabled(cat_id, True)
     await callback.answer("✅ Все категории успешно включены!", show_alert=True)
     enabled = db.get_enabled_categories()
     medians = flipper_engine.category_medians
