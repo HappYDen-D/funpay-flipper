@@ -50,20 +50,26 @@ python -m uv pip compile requirements.in --universal --python-version 3.13 --gen
 
 ## Запуск бота
 
-Сначала задайте переменные окружения в текущем терминале:
+Скопируйте `.env.example` в `.env` и задайте параметры (или передайте их через переменные окружения):
 
 ```powershell
+# Вариант 1: Через файл .env (рекомендуется)
+Copy-Item .env.example .env
+# Заполните FLIPPER_BOT_TOKEN, ADMIN_IDS и при необходимости FUNPAY_GOLDEN_KEY
+
+# Вариант 2: Переменные окружения в терминале
 $env:FLIPPER_BOT_TOKEN = '<локальный токен Telegram>'
 $env:ADMIN_IDS = '<ваш числовой Telegram ID>'
 $env:FUNPAY_GOLDEN_KEY = '<локальная сессия FunPay>'
-# Необязательно: отдельные маршруты соединения.
+# Необязательно: отдельные маршруты соединения
 # $env:FUNPAY_PROXY = 'http://127.0.0.1:8080'
 # $env:TELEGRAM_PROXY = 'http://127.0.0.1:8080'
-.\.venv\Scripts\python.exe start_flipper_bot.py
 ```
 
-На Windows также доступен `run_flipper_bot.bat`. Он использует только локальную
-`.venv` и не выводит токен. `.env` автоматически не загружается.
+Запуск:
+- Windows (батник): `run_flipper_bot.bat` (проверяет `.venv`, подхватывает `.env` или переменные окружения).
+- Напрямую через Python: `.\.venv\Scripts\python.exe start_flipper_bot.py`
+
 Этот cleanup не меняет торговые формулы, лимиты или правила допуска.
 Режим, капитал и разрешение сделки проверяйте по `auto_flipper/PILOT_RUNBOOK.md`;
 запуск процесса сам по себе не означает готовность к реальной закупке.

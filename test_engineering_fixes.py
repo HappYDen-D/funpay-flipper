@@ -79,6 +79,35 @@ class EngineeringFixes(unittest.IsolatedAsyncioTestCase):
                 await engine.scan_and_autobuy_cycle()
                 engine._bot.send_message.assert_awaited_once()
 
+    def test_load_dotenv_behavior(self):
+        import auto_flipper.config as cfg
+        with tempfile.TemporaryDirectory(prefix='dotenv-test-') as folder:
+            env_file = Path(folder) / '.env'
+            env_file.write_text(
+                "# Comment line\n"
+                "TEST_VAR_A=hello_world\n"
+                "TEST_VAR_B=\"quoted_string\"\n"
+                "TEST_VAR_C='single_quoted'\n"
+                "; Semicolon comment\n"
+                "\n"
+                "TEST_EXISTING=new_value\n",
+                encoding="utf-8"
+            )
+            with patch.dict(os.environ, {"TEST_EXISTING": "original_value"}, clear=False):
+                cfg.load_dotenv(env_file)
+                self.assertEqual(os.environ.get("TEST_VAR_A"), "hello_world")
+                self.assertEqual(os.environ.get("TEST_VAR_B"), "quoted_string")
+                self.assertEqual(os.environ.get("TEST_VAR_C"), "single_quoted")
+                self.assertEqual(os.environ.get("TEST_EXISTING"), "original_value")
+
+            with patch.object(cfg, 'BASE_DIR', Path(folder)):
+                with patch.dict(os.environ, {"FLIPPER_IGNORE_DOTENV": "true"}, clear=False):
+                    os.environ.pop("TEST_VAR_A", None)
+                    cfg.load_dotenv()
+                    self.assertNotIn("TEST_VAR_A", os.environ)
+
+            cfg.load_dotenv(Path(folder) / "non_existent.env")
+
 
 if __name__ == '__main__':
     unittest.main()

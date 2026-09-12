@@ -27,7 +27,8 @@ def main():
                        if not key.upper().startswith(('FLIPPER_', 'FUNPAY_', 'TELEGRAM_'))
                        and key.upper() not in excluded}
         environment.update(FLIPPER_DB_PATH=os.path.join(folder, 'flipper.db'),
-                           AUTO_DETECT_PROXY='false')
+                           AUTO_DETECT_PROXY='false',
+                           FLIPPER_IGNORE_DOTENV='true')
         stack.enter_context(patch.dict(os.environ, environment, clear=True))
         stack.enter_context(patch.object(socket.socket,'connect',offline(connect)))
         stack.enter_context(patch.object(socket.socket,'connect_ex',offline(connect_ex)))

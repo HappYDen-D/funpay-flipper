@@ -3,9 +3,41 @@ auto_flipper/config.py — Configuration and tuning parameters for Auto-Flipper 
 """
 import os
 from pathlib import Path
+from typing import Optional
 
 # Base directory
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+
+def load_dotenv(dotenv_path: Optional[Path] = None) -> None:
+    """
+    Load environment variables from a .env file into os.environ.
+    Preserves existing os.environ entries.
+    Ambient loading of BASE_DIR / .env is suppressed with FLIPPER_IGNORE_DOTENV=true.
+    """
+    if dotenv_path is None and os.getenv("FLIPPER_IGNORE_DOTENV", "").lower() in ("true", "1", "yes"):
+        return
+    path = dotenv_path or (BASE_DIR / ".env")
+    if not path.is_file():
+        return
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            for raw_line in f:
+                line = raw_line.strip()
+                if not line or line.startswith("#") or line.startswith(";") or "=" not in line:
+                    continue
+                key, val = line.split("=", 1)
+                key = key.strip()
+                val = val.strip()
+                if (val.startswith('"') and val.endswith('"')) or (val.startswith("'") and val.endswith("'")):
+                    val = val[1:-1]
+                if key and key not in os.environ:
+                    os.environ[key] = val
+    except OSError:
+        pass
+
+
+load_dotenv()
 
 # Database configuration (Strictly isolated auto_flipper.db)
 DB_PATH = os.getenv("FLIPPER_DB_PATH", str(BASE_DIR / "auto_flipper.db"))
@@ -32,6 +64,7 @@ FUNPAY_ORDERS_TRADE_URL = "https://funpay.com/orders/trade"
 FUNPAY_GOLDEN_KEY = os.getenv("FUNPAY_GOLDEN_KEY", "")
 FUNPAY_LOTS_NODE_ACCOUNTS = 1355
 FUNPAY_LOTS_NODE_SUBSCRIPTIONS = 3559
+FUNPAY_PROXY = os.getenv("FUNPAY_PROXY", "").strip()
 
 # Arbitrage Financial Model Defaults
 ARBITRAGE_DRY_RUN_DEFAULT = os.getenv("FLIPPER_DRY_RUN", "true").lower() in ("true", "1", "yes")

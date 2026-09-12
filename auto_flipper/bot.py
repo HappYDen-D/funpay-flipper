@@ -13,7 +13,7 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.client.telegram import TelegramAPIServer
 from aiogram.enums import ParseMode
-from aiogram.exceptions import TelegramNetworkError
+from aiogram.exceptions import TelegramNetworkError, TelegramUnauthorizedError
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import BotCommand
 
@@ -182,10 +182,24 @@ def create_bot_and_dispatcher(session: Optional[AiohttpSession] = None) -> tuple
 
 
 async def main():
+    import os
+    token = BOT_TOKEN or os.getenv("FLIPPER_BOT_TOKEN", "").strip()
+    if not token or token == "your_bot_token_here":
+        logger.error(
+            "FLIPPER_BOT_TOKEN is missing or not configured. "
+            "Please configure it in .env or as an environment variable."
+        )
+        return
     bot, dp = create_bot_and_dispatcher()
     logger.info("Starting Auto-Flipper polling...")
     try:
         await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
+    except TelegramUnauthorizedError:
+        logger.error(
+            "\n"
+            "❌ ОШИБКА АВТОРИЗАЦИИ TELEGRAM: Неверный или отозванный FLIPPER_BOT_TOKEN!\n"
+            "Проверьте правильность токена, полученного от @BotFather, в файле .env или переменных окружения."
+        )
     except TelegramNetworkError as e:
         logger.error(
             f"\n"
