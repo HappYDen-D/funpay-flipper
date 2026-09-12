@@ -25,6 +25,106 @@ async def alerts(message: Message):
     await message.answer('Уведомления включены. Объявление не является доказательством спроса.' if enabled else 'Уведомления выключены.')
 
 
+@router.message(Command('liquidity'))
+async def cmd_liquidity(message: Message):
+    parts = message.text.split(maxsplit=1)
+    target_arg = parts[1].strip().lower() if len(parts) > 1 else ""
+
+    from auto_flipper.liquidity import evaluate_sku_liquidity
+    from auto_flipper.sku_matcher import (
+        BENCHMARK_SKUS,
+        BENCHMARK_SKU_NAMES,
+        SKU_TF2_KEY,
+        SKU_TF2_TICKET,
+    )
+
+    # Detailed single SKU mode if requested
+    if target_arg:
+        sku = None
+        if target_arg in (SKU_TF2_KEY, "key", "5021", "5021;6", "mann co"):
+            sku = SKU_TF2_KEY
+        elif target_arg in (SKU_TF2_TICKET, "ticket", "725", "725;6", "tour"):
+            sku = SKU_TF2_TICKET
+        else:
+            sku = target_arg
+
+        assessment = evaluate_sku_liquidity(db, sku)
+        if not assessment:
+            await message.answer(f"По товару <code>{escape(sku)}</code> история рынка пока не накоплена.")
+            return
+
+        m = assessment.metrics
+        hours = int(m.observation_duration_hours)
+        minutes = int((m.observation_duration_hours - hours) * 60)
+        dur_str = f"{hours}h {minutes:02d}m" if hours > 0 else f"{minutes}m"
+
+        text = (
+            f"📊 <b>Детальный профиль ликвидности: {escape(assessment.sku_name)}</b>\n"
+            f"SKU: <code>{escape(m.canonical_sku)}</code>\n\n"
+            f"🏆 <b>Liquidity Score: {assessment.score:.1f}/100</b>\n"
+            f"🛡️ <b>Confidence: {escape(assessment.confidence)}</b>\n"
+            f"<i>{escape('; '.join(assessment.confidence_reasons))}</i>\n\n"
+            f"<b>Метрики стакана:</b>\n"
+            f"• Активных лотов: {m.active_listings}\n"
+            f"• Уникальных продавцов: {m.unique_sellers}\n"
+            f"• Наблюдаемый остаток (stock): {m.observed_stock}\n"
+            f"• Мин / P10 / P25: {m.min_price:.2f} / {m.p10_price:.2f} / {m.p25_price:.2f} ₽\n"
+            f"• Медиана (P50) / P90 / Макс: {m.p50_price:.2f} / {m.p90_price:.2f} / {m.max_price:.2f} ₽\n"
+            f"• Дисперсия цен (P90-P10)/P50: {m.price_dispersion:.2%}\n"
+            f"• Волатильность P50: {m.price_volatility:.2%}\n\n"
+            f"<b>Динамика и оборачиваемость:</b>\n"
+            f"• Turnover proxy: {m.turnover_proxy:.1f}/h (net disappearances)\n"
+            f"• Исчезновений (disappeared): {m.disappearance_count} ({m.disappearance_rate:.1f}/h)\n"
+            f"• Возвращений (reappeared): {m.reappearance_count} ({m.reappearance_rate:.1f}/h)\n"
+            f"• Новых лотов (new): {m.new_listings_count} ({m.new_listings_rate:.1f}/h)\n"
+            f"• Средний возраст лота: {m.median_listing_age_hours:.1f}h\n"
+            f"• Глубина у дна рынка (до +5%): {m.competition_depth_bottom} лотов ({m.competition_depth_sellers} продавцов)\n\n"
+            f"<b>Суб-оценки (0..100):</b>\n"
+            f"• Turnover: {assessment.sub_scores['turnover']}\n"
+            f"• Стабильность: {assessment.sub_scores['stability']}\n"
+            f"• Узость спреда: {assessment.sub_scores['dispersion']}\n"
+            f"• Чистота уходов: {assessment.sub_scores['reappearance']}\n"
+            f"• Конкуренция: {assessment.sub_scores['competition']}\n\n"
+            f"⏱ История: {dur_str} ({m.sample_count} сэмплов)"
+        )
+        await message.answer(text)
+        return
+
+    # Compact summary for all benchmark SKUs
+    blocks = []
+    for sku in BENCHMARK_SKUS:
+        assessment = evaluate_sku_liquidity(db, sku)
+        display_name = BENCHMARK_SKU_NAMES.get(sku, sku)
+        if not assessment:
+            blocks.append(
+                f"<b>{escape(display_name)}</b>\n"
+                f"Score: N/A · Confidence: LOW\n"
+                f"<i>История пока не накоплена. Включите OBSERVE.</i>"
+            )
+            continue
+
+        m = assessment.metrics
+        hours = int(m.observation_duration_hours)
+        minutes = int((m.observation_duration_hours - hours) * 60)
+        dur_str = f"{hours}h {minutes:02d}m" if hours > 0 else f"{minutes}m"
+
+        icon = "🔑" if "5021" in sku else "🎫"
+        blocks.append(
+            f"{icon} <b>{escape(assessment.sku_name)}</b>\n"
+            f"Score: <b>{assessment.score:.0f}/100</b>\n"
+            f"Confidence: <b>{escape(assessment.confidence)}</b>\n"
+            f"Active lots: {m.active_listings} · Sellers: {m.unique_sellers}"
+            + (f" · Stock: {m.observed_stock}" if m.observed_stock > 0 else "") + "\n"
+            f"P25: {m.p25_price:.2f} ₽ · Median: {m.p50_price:.2f} ₽\n"
+            f"Turnover proxy: {m.turnover_proxy:.1f}/h · Reappearance: {m.reappearance_rate:.1f}/h\n"
+            f"Observed: {dur_str} ({m.sample_count} samples)"
+        )
+
+    response = "📊 <b>Ликвидность рынка (Benchmark SKUs)</b>\n\n" + "\n\n".join(blocks)
+    response += "\n\n<i>Для детального отчёта: /liquidity key или /liquidity ticket</i>"
+    await message.answer(response)
+
+
 @router.message(Command('candidates'))
 async def candidates(message: Message):
     rows = db.recent_candidates()

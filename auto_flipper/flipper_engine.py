@@ -1002,6 +1002,12 @@ class FlipperEngine(AssistantWorkflow):
         if not candidate_lots:
             return []
 
+        # Record market history for tracked benchmark SKUs
+        try:
+            db.record_market_observation(candidate_lots)
+        except Exception as e:
+            logger.warning(f"Error recording market history observation: {e}")
+
         # Update dynamic median prices per category from observed listings
         category_prices: Dict[str, List[float]] = {cid: [] for cid in CATEGORY_REGISTRY.keys()}
         for l in candidate_lots:

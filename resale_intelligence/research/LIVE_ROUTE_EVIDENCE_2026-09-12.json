@@ -1,0 +1,352 @@
+{
+  "research_date": "2026-09-12",
+  "research_timestamp_utc": "2026-09-12T17:50:00Z",
+  "branch": "v0.2-route-discovery",
+  "baseline_commit": "3b9ba551721beb3136bc5cf6fbb725edb1b69819",
+  "fx_rates": {
+    "USD_RUB": "84.2569",
+    "EUR_RUB": "97.8728",
+    "source": "https://www.cbr.ru/scripts/XML_daily.asp"
+  },
+  "pilot_parameters": {
+    "capital_rub": 500.0,
+    "minimum_profit_rub": 10.0,
+    "minimum_roi": 0.15,
+    "max_turnaround_hours": 72,
+    "target_turnaround_hours": 24,
+    "risk_policy": {
+      "reserve_ratio": 0.40,
+      "minimum_reserve_rub": 50.0,
+      "lot_cap_ratio": 0.15,
+      "supplier_cap_ratio": 0.25,
+      "category_cap_ratio": 0.40,
+      "loss_stop_ratio": 0.10,
+      "max_open_loss_at_500_rub": 50.0
+    }
+  },
+  "routes_investigated": [
+    {
+      "id": "tf2_ticket_725_6",
+      "category": "steam_items",
+      "product_name": "Tour of Duty Ticket",
+      "exact_sku": "725;6",
+      "item_type": "trade_item",
+      "supplier": {
+        "platform": "FunPay",
+        "offer_id": 65624843,
+        "url": "https://funpay.com/lots/offer?id=65624843",
+        "seller": "pda363",
+        "reviews": 219,
+        "rating": 5.0,
+        "quantity_available": 65,
+        "listing_price_rub": 80.00,
+        "base_factor_price_guard_rub": 78.558,
+        "sbp_debit_rub": 80.00,
+        "balance_debit_rub": 78.56
+      },
+      "buyer": {
+        "platform": "Marketplace.tf",
+        "url": "https://marketplace.tf/items/tf2/725;6",
+        "evidence_type": "Level_A_buy_order_book",
+        "bid_price_usd": 0.76,
+        "bid_capacity": 5,
+        "platform_fee_ratio": 0.10,
+        "net_payout_usd": 0.684,
+        "net_payout_rub": 57.63,
+        "transfer_method": "platform_trade",
+        "settlement_hours": 4
+      },
+      "economics": {
+        "gross_buy_rub": 80.00,
+        "final_expected_debit_rub": 78.56,
+        "route_costs_rub": 0.00,
+        "net_payout_rub": 57.63,
+        "profit_rub": -20.93,
+        "roi": -0.2664,
+        "b_max_rub": 47.63
+      },
+      "evaluation": {
+        "economically_viable": false,
+        "current_risk_policy_allowed": false,
+        "rejection_reasons": [
+          "NEGATIVE_SPREAD: buy 78.56 RUB > net exit 57.63 RUB (loss 20.93 RUB)",
+          "B_ABOVE_BMAX: buy 78.56 RUB > Bmax 47.63 RUB",
+          "CAPITAL_LIMIT: buy 78.56 RUB > 10% risk budget of 50.00 RUB at 500 RUB equity",
+          "WITHDRAWAL_RESTRICTION: Marketplace.tf does not support direct RUB payouts to Russian banks",
+          "STEAM_GUARD_RESTRICTION: Steam trade requires active mobile Steam Guard > 15 days"
+        ],
+        "verdict": "REJECTED"
+      }
+    },
+    {
+      "id": "tf2_mann_co_key_5021_6_tf2key",
+      "category": "steam_items",
+      "product_name": "Mann Co. Supply Crate Key",
+      "exact_sku": "5021;6",
+      "item_type": "trade_item",
+      "supplier": {
+        "platform": "FunPay",
+        "offer_id": 76841683,
+        "url": "https://funpay.com/lots/offer?id=76841683",
+        "seller": "rkrklgrhte",
+        "reviews": 362,
+        "rating": 5.0,
+        "quantity_available": 68,
+        "listing_price_rub": 167.00,
+        "expected_debit_rub": 167.00
+      },
+      "buyer": {
+        "platform": "tf2key.ru",
+        "url": "https://tf2key.ru",
+        "evidence_type": "Level_A_instant_buyback",
+        "quoted_buy_price_rub": 142.00,
+        "minimum_sbp_payout_rub": 500.0,
+        "payout_delay_hours": 168,
+        "net_payout_rub": 142.00
+      },
+      "economics": {
+        "final_expected_debit_rub": 167.00,
+        "route_costs_rub": 0.00,
+        "net_payout_rub": 142.00,
+        "profit_rub": -25.00,
+        "roi": -0.1497,
+        "b_max_rub": 123.47
+      },
+      "evaluation": {
+        "economically_viable": false,
+        "current_risk_policy_allowed": false,
+        "rejection_reasons": [
+          "NEGATIVE_SPREAD: buy 167.00 RUB > net exit 142.00 RUB (loss 25.00 RUB)",
+          "B_ABOVE_BMAX: buy 167.00 RUB > Bmax 123.47 RUB",
+          "CAPITAL_LIMIT: buy 167.00 RUB is 33.4% of capital 500.00 RUB (limit is 10% / 50.00 RUB)",
+          "SETTLEMENT_DELAY: tf2key.ru SBP settlement delay up to 168 hours exceeds 72 hour requirement",
+          "PAYOUT_MINIMUM: 500 RUB minimum payout requires selling 4 keys, exceeding pilot budget"
+        ],
+        "verdict": "REJECTED"
+      }
+    },
+    {
+      "id": "tf2_mann_co_key_5021_6_marketplacetf",
+      "category": "steam_items",
+      "product_name": "Mann Co. Supply Crate Key",
+      "exact_sku": "5021;6",
+      "item_type": "trade_item",
+      "supplier": {
+        "platform": "FunPay",
+        "offer_id": 76841683,
+        "url": "https://funpay.com/lots/offer?id=76841683",
+        "listing_price_rub": 167.00
+      },
+      "buyer": {
+        "platform": "Marketplace.tf",
+        "url": "https://marketplace.tf/items/tf2/5021;6",
+        "evidence_type": "Level_A_buy_order_book",
+        "bid_price_usd": 1.85,
+        "bid_capacity": 410,
+        "net_payout_usd": 1.665,
+        "net_payout_rub": 140.29
+      },
+      "economics": {
+        "final_expected_debit_rub": 167.00,
+        "net_payout_rub": 140.29,
+        "profit_rub": -26.71,
+        "roi": -0.1599,
+        "b_max_rub": 121.99
+      },
+      "evaluation": {
+        "economically_viable": false,
+        "current_risk_policy_allowed": false,
+        "rejection_reasons": [
+          "NEGATIVE_SPREAD: buy 167.00 RUB > exit 140.29 RUB",
+          "WITHDRAWAL_BLOCKED: Russian bank cards unsupported by Marketplace.tf"
+        ],
+        "verdict": "REJECTED"
+      }
+    },
+    {
+      "id": "tf2_backpack_expander_5050_6",
+      "category": "steam_items",
+      "product_name": "Backpack Expander",
+      "exact_sku": "5050;6",
+      "item_type": "trade_item",
+      "supplier": {
+        "platform": "FunPay",
+        "offer_id": 65626180,
+        "url": "https://funpay.com/lots/offer?id=65626180",
+        "seller": "pda363",
+        "listing_price_rub": 85.33
+      },
+      "buyer": {
+        "platform": "Marketplace.tf",
+        "url": "https://marketplace.tf/items/tf2/5050;6",
+        "bid_price_usd": 0.71,
+        "bid_capacity": 7,
+        "net_payout_usd": 0.639,
+        "net_payout_rub": 53.84
+      },
+      "economics": {
+        "final_expected_debit_rub": 85.33,
+        "net_payout_rub": 53.84,
+        "profit_rub": -31.49,
+        "roi": -0.369,
+        "b_max_rub": 43.84
+      },
+      "evaluation": {
+        "economically_viable": false,
+        "current_risk_policy_allowed": false,
+        "rejection_reasons": [
+          "NEGATIVE_SPREAD: buy 85.33 RUB > exit 53.84 RUB (loss 31.49 RUB)"
+        ],
+        "verdict": "REJECTED"
+      }
+    },
+    {
+      "id": "terraria_pc_key",
+      "category": "game_keys",
+      "product_name": "Terraria (PC) Steam Key",
+      "exact_sku": "terraria_steam_global_retail",
+      "item_type": "permanent_key",
+      "supplier": {
+        "platform": "FunPay",
+        "node_id": 1587,
+        "offer_id": 72082408,
+        "url": "https://funpay.com/lots/offer?id=72082408",
+        "listing_price_rub": 824.85,
+        "note": "Lower priced lots at 197-385 RUB are steam gifts or activation bot links, not retail keys"
+      },
+      "buyer": {
+        "platform": "none",
+        "evidence_type": "Level_C_retail_listing_only",
+        "bid_price_rub": null,
+        "comment": "No automated instant buy orders for single Steam game keys"
+      },
+      "economics": {
+        "final_expected_debit_rub": 824.85,
+        "net_payout_rub": 0.0,
+        "profit_rub": -824.85,
+        "roi": -1.0,
+        "b_max_rub": 0.0
+      },
+      "evaluation": {
+        "economically_viable": false,
+        "current_risk_policy_allowed": false,
+        "rejection_reasons": [
+          "NO_LEVEL_A_EXIT: zero pre-confirmed buyers",
+          "CAPITAL_LIMIT_EXCEEDED: 824.85 RUB exceeds pilot capital 500.00 RUB by 65%",
+          "VERIFICATION_IMPOSSIBLE: Steam keys cannot be verified without redeeming them",
+          "DISPUTE_RISK_HIGH: buyer can redeem key and claim duplicate/invalid"
+        ],
+        "verdict": "REJECTED"
+      }
+    },
+    {
+      "id": "cs2_prime_account",
+      "category": "game_accounts",
+      "product_name": "CS2 Prime Account with Native Mail",
+      "exact_sku": "cs2_prime_ru_first_mail",
+      "item_type": "account",
+      "supplier": {
+        "platform": "FunPay",
+        "node_id": 1350,
+        "lowest_genuine_price_rub": 1100.0,
+        "note": "1.06 RUB listings are empty Steam autoregs with no CS2 Prime"
+      },
+      "buyer": {
+        "evidence_type": "Level_C_retail_listing_only",
+        "bid_price_rub": null
+      },
+      "evaluation": {
+        "economically_viable": false,
+        "current_risk_policy_allowed": false,
+        "rejection_reasons": [
+          "NO_CONFIRMED_BUYER: no instant buy order",
+          "CAPITAL_LIMIT: purchase 1100 RUB is 2.2x total budget 500 RUB",
+          "RECOVERY_RISK_HIGH: original creator can recover account via Steam support with first email/receipts"
+        ],
+        "verdict": "REJECTED"
+      }
+    },
+    {
+      "id": "brawl_stars_account",
+      "category": "game_accounts",
+      "product_name": "Brawl Stars Supercell ID Account",
+      "exact_sku": "brawl_stars_tutorial_fresh",
+      "item_type": "account",
+      "supplier": {
+        "platform": "FunPay",
+        "node_id": 436,
+        "offer_id": 72136457,
+        "url": "https://funpay.com/lots/offer?id=72136457",
+        "seller": "Fizryk1337",
+        "listing_price_rub": 10.00
+      },
+      "buyer": {
+        "evidence_type": "Level_C_saturated_supply_no_demand",
+        "bid_price_rub": null
+      },
+      "evaluation": {
+        "economically_viable": false,
+        "current_risk_policy_allowed": true,
+        "rejection_reasons": [
+          "ZERO_DEMAND: hundreds of identical unsold accounts at 10-15 RUB",
+          "TOS_VIOLATION: Supercell ToS bans account trading and freezes accounts upon IP shift",
+          "NO_LEVEL_A_EXIT: no buyback service exists for fresh tutorial accounts"
+        ],
+        "verdict": "REJECTED"
+      }
+    },
+    {
+      "id": "roblox_mm2_icewing",
+      "category": "in_game_items",
+      "product_name": "MM2 Icewing Ancient Knife",
+      "exact_sku": "mm2_icewing_ancient",
+      "item_type": "trade_item",
+      "supplier": {
+        "platform": "FunPay",
+        "node_id": 925,
+        "node_discovery": "Confirmed active on FunPay (HTTP 200, 139 offers, title 'Murder Mystery 2 Roblox')",
+        "offer_id": 76836949,
+        "url": "https://funpay.com/lots/offer?id=76836949",
+        "seller": "WenzBuyer",
+        "listing_price_rub": 117.11
+      },
+      "buyer": {
+        "platform": "mm2.cash",
+        "evidence_type": "Level_B_requires_deposit_without_public_quote",
+        "bid_price_rub": null
+      },
+      "evaluation": {
+        "economically_viable": false,
+        "current_risk_policy_allowed": false,
+        "rejection_reasons": [
+          "NO_PUBLIC_BID: mm2.cash requires linking Roblox account and Turnstile captcha before pricing",
+          "CAPITAL_LIMIT: 117.11 RUB exceeds 10% risk budget of 50.00 RUB",
+          "MANUAL_IN_GAME_TRANSFER: requires operator to join Roblox game server manually"
+        ],
+        "verdict": "REJECTED"
+      }
+    },
+    {
+      "id": "roblox_robux_chips_99",
+      "category": "in_game_currency",
+      "product_name": "Roblox Robux",
+      "exact_sku": "robux_gamepass_transfer",
+      "item_type": "in_game_currency",
+      "evaluation": {
+        "economically_viable": false,
+        "current_risk_policy_allowed": false,
+        "rejection_reasons": [
+          "TURNAROUND_FAILURE: Roblox imposes a 5 to 7 day pending hold on Gamepass Robux, violating the <= 72 hour cash turnaround requirement",
+          "PLATFORM_TAX: Roblox takes 30% fee on gamepass transfers, destroying arbitrage margin",
+          "GROUP_COOLDOWN: Roblox Group payout requires recipient to be in group for >= 14 days"
+        ],
+        "verdict": "REJECTED"
+      }
+    }
+  ],
+  "final_conclusion": {
+    "executable_trade_found": false,
+    "verdict_code": "NO_EXECUTABLE_TRADE_FOUND",
+    "summary": "None of the explored routes across all 4 categories possesses a confirmed executable Level A exit that provides positive net RUB profit above the pilot thresholds (min profit >= 10 RUB, ROI >= 15%) within the 72-hour reusable cash constraint."
+  }
+}

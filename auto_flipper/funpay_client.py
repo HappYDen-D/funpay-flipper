@@ -1087,12 +1087,22 @@ class FunPayClient:
                 is_plus = True
                 is_personal = not any(b in clean_title.lower() for b in cat.blacklisted_keywords) if cat else True
 
+            # 7. Stock / Quantity
+            amount_m = re.search(r'class=["\']tc-amount(?:\s+[^"\']*)?["\'][^>]*>(.*?)</div>', body, re.DOTALL | re.IGNORECASE)
+            stock = 1
+            if amount_m:
+                amount_text = re.sub(r'<[^>]+>', '', amount_m.group(1)).strip()
+                digits_m = re.search(r'(\d+)', amount_text)
+                if digits_m:
+                    stock = max(1, int(digits_m.group(1)))
+
             lots.append({
                 "lot_id": lot_id,
                 "lot_num": lot_num,
                 "title": clean_title,
                 "price": price_rub,
                 "currency": "RUB",
+                "stock": stock,
                 "seller": seller,
                 "seller_rating": seller_rating,
                 "seller_reviews": seller_reviews,

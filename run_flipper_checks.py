@@ -36,7 +36,8 @@ def main():
             'test_engineering_fixes','test_database_concurrency',
             'test_auto_flipper','test_safe_flipper','test_client_contracts',
             'auto_flipper.test_exit_policy','auto_flipper.test_capital_store','test_manual_route','test_pilot_integration',
-            'resale_intelligence.models.test_models','resale_intelligence.models.test_risk_gate'])
+            'resale_intelligence.models.test_models','resale_intelligence.models.test_risk_gate',
+            'test_liquidity_calibration'])
         result=unittest.TextTestRunner(verbosity=1).run(suite)
         return 0 if result.wasSuccessful() else 1
 

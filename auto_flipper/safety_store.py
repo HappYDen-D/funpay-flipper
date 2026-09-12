@@ -6,9 +6,10 @@ from datetime import datetime
 from auto_flipper.economics import kopecks, stored_kopecks
 from auto_flipper.capital_store import CapitalStore
 from auto_flipper.manual_route import ManualRouteStore
+from auto_flipper.market_store import MarketHistoryStore
 
 
-class SafetyStore(CapitalStore, ManualRouteStore):
+class SafetyStore(CapitalStore, ManualRouteStore, MarketHistoryStore):
     def init_safety_schema(self, conn):
         statements = (
             """CREATE TABLE IF NOT EXISTS trade_candidates (
@@ -36,6 +37,7 @@ class SafetyStore(CapitalStore, ManualRouteStore):
             buyer_id TEXT NOT NULL, sku TEXT NOT NULL, capacity INTEGER NOT NULL)''')
         self.init_capital_schema(conn)
         self.init_manual_schema(conn)
+        self.init_market_history_schema(conn)
 
     def observe_candidate(self, payload):
         with self._lock, self._get_connection() as conn:

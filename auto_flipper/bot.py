@@ -127,6 +127,7 @@ async def setup_bot_commands(bot: Bot):
         BotCommand(command="bind_sale", description="Связать оплаченный заказ с объявлением"),
         BotCommand(command="start", description="Главный дашборд флипера"),
         BotCommand(command="status", description="Статус оборота и авто-выкупа"),
+        BotCommand(command="liquidity", description="📊 Ликвидность benchmark SKU (Key & Ticket)"),
         BotCommand(command="pnl", description="📈 Финансовый отчёт P&L и ROI"),
         BotCommand(command="categories", description="📁 Целевые категории снайпинга"),
         BotCommand(command="inventory", description="📦 Склад и активные лоты"),
