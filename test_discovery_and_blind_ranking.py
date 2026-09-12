@@ -434,6 +434,53 @@ class TestTelegramLiquiditySubcommands(unittest.IsolatedAsyncioTestCase):
             self.assertIn("BOTTOM-", reply)
             self.assertIn("Score:", reply)
 
+        # Test single-word /liquidity_top
+        msg.reset_mock()
+        msg.text = "/liquidity_top"
+        with patch("auto_flipper.assistant_handlers.db", self.db):
+            await cmd_liquidity(msg)
+            reply = msg.answer.call_args[0][0]
+            self.assertIn("TOP-", reply)
+            self.assertTrue(msg.answer.call_args[1].get("reply_markup") is not None)
+
+        # Test single-word /liquidity_bottom
+        msg.reset_mock()
+        msg.text = "/liquidity_bottom"
+        with patch("auto_flipper.assistant_handlers.db", self.db):
+            await cmd_liquidity(msg)
+            reply = msg.answer.call_args[0][0]
+            self.assertIn("BOTTOM-", reply)
+
+        # Test single-word /liquidity_key
+        msg.reset_mock()
+        msg.text = "/liquidity_key"
+        with patch("auto_flipper.assistant_handlers.db", self.db):
+            await cmd_liquidity(msg)
+            reply = msg.answer.call_args[0][0]
+            self.assertIn("Mann Co. Supply Crate Key", reply)
+
+        # Test summary /liquidity with inline keyboard
+        msg.reset_mock()
+        msg.text = "/liquidity"
+        with patch("auto_flipper.assistant_handlers.db", self.db):
+            await cmd_liquidity(msg)
+            reply = msg.answer.call_args[0][0]
+            self.assertIn("/liquidity_top", reply)
+            self.assertIn("/liquidity_bottom", reply)
+            kb = msg.answer.call_args[1].get("reply_markup")
+            self.assertIsNotNone(kb)
+
+        # Test callback query
+        from auto_flipper.assistant_handlers import on_liquidity_callback
+        query = AsyncMock()
+        query.data = "liquidity:top"
+        query.message = AsyncMock()
+        with patch("auto_flipper.assistant_handlers.db", self.db):
+            await on_liquidity_callback(query)
+            self.assertTrue(query.answer.called)
+            self.assertTrue(query.message.edit_text.called or query.message.answer.called)
+
 
 if __name__ == "__main__":
     unittest.main()
+
