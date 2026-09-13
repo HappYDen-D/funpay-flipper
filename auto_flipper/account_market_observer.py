@@ -26,6 +26,8 @@ from auto_flipper.config import (
     ACCOUNT_ACTIVE_POLL_MAX_SECONDS,
     ACCOUNT_BACKGROUND_POLL_MIN_SECONDS,
     ACCOUNT_BACKGROUND_POLL_MAX_SECONDS,
+    ACCOUNT_FAILURE_BACKOFF_INITIAL_SECONDS,
+    ACCOUNT_FAILURE_BACKOFF_MAX_SECONDS,
     ACCOUNT_CHEAP_RUB_THRESHOLD,
     ACCOUNT_MARKET_SEEDS,
     ACCOUNT_MAX_LARGEST_SELLER_SHARE,
@@ -34,10 +36,13 @@ from auto_flipper.config import (
     ACCOUNT_MIN_CHEAP_SELLERS,
     ACCOUNT_MIN_INDEPENDENT_SELLERS,
     ACCOUNT_MIN_PARSEABLE_RATIO,
+    ACCOUNT_RISK_EVIDENCE_HIGH_RATIO,
+    ACCOUNT_RISK_EVIDENCE_MEDIUM_RATIO,
     ACCOUNT_SELECTION_CONFIRM_SAMPLES,
     ACCOUNT_SELECTION_HYSTERESIS_POINTS,
     MAX_ACTIVE_ACCOUNT_MARKETS,
 )
+from auto_flipper.account_snapshot import AccountMarketSnapshot, SnapshotQuality
 from auto_flipper.market_store import compute_mad, compute_quantile
 
 logger = logging.getLogger("AccountMarketObserver")
@@ -59,6 +64,10 @@ class AccountMarketConfig:
     background_poll_seconds: float = ACCOUNT_BACKGROUND_POLL_MIN_SECONDS
     active_poll_max_seconds: float = ACCOUNT_ACTIVE_POLL_MAX_SECONDS
     background_poll_max_seconds: float = ACCOUNT_BACKGROUND_POLL_MAX_SECONDS
+    failure_backoff_initial_seconds: float = ACCOUNT_FAILURE_BACKOFF_INITIAL_SECONDS
+    failure_backoff_max_seconds: float = ACCOUNT_FAILURE_BACKOFF_MAX_SECONDS
+    risk_evidence_medium_ratio: float = ACCOUNT_RISK_EVIDENCE_MEDIUM_RATIO
+    risk_evidence_high_ratio: float = ACCOUNT_RISK_EVIDENCE_HIGH_RATIO
     medium_min_hours: float = 1.0
     medium_min_samples: int = 12
     high_min_hours: float = 6.0
@@ -97,6 +106,13 @@ class AccountMarketMetrics:
     average_lifetime_hours: float
     median_cohort_dispersion: float
     well_priced_cohort_coverage: float
+    advertised_market_count: Optional[int] = None
+    parsed_count: int = 0
+    coverage_ratio: Optional[float] = None
+    snapshot_quality: str = "FAILED"
+    scan_age_seconds: Optional[float] = None
+    scan_duration: float = 0.0
+    complete_sample_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -113,6 +129,14 @@ class AccountMarketRiskScore:
 
 
 @dataclass(frozen=True)
+class RiskEvidenceCoverage:
+    coverage_ratio: float
+    confidence: str
+    observed_dimensions: Tuple[str, ...]
+    missing_dimensions: Tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class AccountMarketAssessment:
     market_id: str
     name: str
@@ -125,6 +149,7 @@ class AccountMarketAssessment:
     eligibility_failures: Tuple[str, ...]
     future_flip_eligibility: str
     explanations: Tuple[str, ...]
+    risk_evidence: RiskEvidenceCoverage
 
     @property
     def mops(self) -> float:
@@ -146,9 +171,11 @@ def _sat_log(value: float, target: float) -> float:
 
 
 def _confidence(metrics: AccountMarketMetrics, cfg: AccountMarketConfig) -> str:
-    if metrics.observation_duration_hours >= cfg.high_min_hours and metrics.sample_count >= cfg.high_min_samples:
+    if metrics.snapshot_quality != SnapshotQuality.COMPLETE.value:
+        return "LOW"
+    if metrics.observation_duration_hours >= cfg.high_min_hours and metrics.complete_sample_count >= cfg.high_min_samples:
         return "HIGH"
-    if metrics.observation_duration_hours >= cfg.medium_min_hours and metrics.sample_count >= cfg.medium_min_samples:
+    if metrics.observation_duration_hours >= cfg.medium_min_hours and metrics.complete_sample_count >= cfg.medium_min_samples:
         return "MEDIUM"
     return "LOW"
 
@@ -156,10 +183,25 @@ def _confidence(metrics: AccountMarketMetrics, cfg: AccountMarketConfig) -> str:
 def compute_account_market_metrics(db, market_id: str, now: Optional[float] = None,
                                    cheap_rub_threshold: float = ACCOUNT_CHEAP_RUB_THRESHOLD) -> AccountMarketMetrics:
     now_ts = time.time() if now is None else float(now)
-    lots = db.get_account_market_lots(market_id, active_only=True)
+    scans = db.get_account_market_scans(market_id, limit=500)
+    latest_scan = scans[0] if scans else None
+    latest_data_scan = next((scan for scan in scans if scan["snapshot_quality"] != "FAILED"), None)
+    if latest_data_scan and latest_data_scan["snapshot_quality"] == "PARTIAL":
+        lots = [lot for lot in db.get_account_market_lots(market_id, active_only=False)
+                if float(lot["observed_at"]) == float(latest_data_scan["started_at"])]
+    else:
+        lots = db.get_account_market_lots(market_id, active_only=True)
     all_lots = db.get_account_market_lots(market_id, active_only=False)
     events = db.get_account_market_events(market_id)
     samples = db.get_account_market_samples(market_id, limit=500)
+    complete_samples = 0
+    for sample in samples:
+        try:
+            sample_meta = json.loads(sample.get("metrics_json") or "{}")
+        except (TypeError, ValueError):
+            sample_meta = {}
+        if sample_meta.get("snapshot_quality", "COMPLETE") == "COMPLETE":
+            complete_samples += 1
     seller_counts = Counter(str(lot.get("seller") or "Unknown") for lot in lots)
     active_count = len(lots)
     shares = sorted((count / active_count for count in seller_counts.values()), reverse=True) if active_count else []
@@ -213,6 +255,13 @@ def compute_account_market_metrics(db, market_id: str, now: Optional[float] = No
         average_lifetime_hours=round(average_lifetime, 4),
         median_cohort_dispersion=float(statistics.median(dispersions)) if dispersions else 0.0,
         well_priced_cohort_coverage=well_priced_lots / max(1, priced_classified_lots),
+        advertised_market_count=latest_scan["advertised_market_count"] if latest_scan else None,
+        parsed_count=int(latest_scan["parsed_count"]) if latest_scan else 0,
+        coverage_ratio=latest_scan["coverage_ratio"] if latest_scan else None,
+        snapshot_quality=latest_scan["snapshot_quality"] if latest_scan else "FAILED",
+        scan_age_seconds=max(0.0, now_ts - float(latest_scan["started_at"])) if latest_scan else None,
+        scan_duration=float(latest_scan["scan_duration"]) if latest_scan else 0.0,
+        complete_sample_count=complete_samples,
     )
 
 
@@ -259,7 +308,7 @@ def evaluate_account_market_risk(lots: Sequence[Mapping[str, Any]], metrics: Acc
         "no_email_access": 95, "ambiguous_access": 85, "rental": 70,
         "platform_linking": 55, "extremely_new_seller": 65, "warranty_claim": 20,
         "email_change_claim": 25, "native_email_claim": 30, "email_included_claim": 20,
-        "full_access_claim": 15,
+        "full_access_claim": 15, "recovery_claim": 45, "transfer_claim": 35,
     }
     claim_risk = sum(signal_weights.get(flag, 35) * count / total for flag, count in flag_counts.items())
     claim_risk = _clamp(claim_risk)
@@ -277,6 +326,39 @@ def evaluate_account_market_risk(lots: Sequence[Mapping[str, Any]], metrics: Acc
                    .15 * concentration + .10 * mass_identical)
     signals = tuple(sorted(flag for flag, count in flag_counts.items() if count))
     return AccountMarketRiskScore(score, components, signals)
+
+
+def evaluate_risk_evidence_coverage(lots: Sequence[Mapping[str, Any]],
+                                    config: Optional[AccountMarketConfig] = None) -> RiskEvidenceCoverage:
+    """Measure how much risk-relevant evidence exists; missing means unknown."""
+    cfg = config or AccountMarketConfig()
+    dimensions = {
+        "access": {"full_access_claim", "ambiguous_access", "no_email_access"},
+        "email": {"email_included_claim", "native_email_claim", "email_change_claim", "no_email_access"},
+        "recovery": {"recovery_claim", "native_email_claim", "no_email_access"},
+        "transfer": {"transfer_claim", "email_change_claim", "ambiguous_access"},
+        "warranty": {"warranty_claim"},
+        "platform_linking": {"platform_linking"},
+    }
+    if not lots:
+        coverage = 0.0
+        per_dimension = {name: 0.0 for name in dimensions}
+    else:
+        per_dimension = {}
+        for name, flags in dimensions.items():
+            per_dimension[name] = sum(
+                1 for lot in lots if flags.intersection(set(lot.get("risk_flags") or ()))
+            ) / len(lots)
+        coverage = sum(per_dimension.values()) / len(per_dimension)
+    if coverage >= cfg.risk_evidence_high_ratio:
+        confidence = "HIGH"
+    elif coverage >= cfg.risk_evidence_medium_ratio:
+        confidence = "MEDIUM"
+    else:
+        confidence = "LOW"
+    observed = tuple(sorted(name for name, ratio in per_dimension.items() if ratio > 0))
+    missing = tuple(sorted(name for name, ratio in per_dimension.items() if ratio == 0))
+    return RiskEvidenceCoverage(round(coverage, 4), confidence, observed, missing)
 
 
 def _eligibility(metrics: AccountMarketMetrics, cfg: AccountMarketConfig) -> Tuple[bool, Tuple[str, ...]]:
@@ -302,13 +384,22 @@ def assess_account_market(db, market_id: str, config: Optional[AccountMarketConf
     metrics = compute_account_market_metrics(db, market_id, now=now,
                                              cheap_rub_threshold=cfg.cheap_rub_threshold)
     priority = evaluate_market_observation_priority(metrics)
-    lots = db.get_account_market_lots(market_id, active_only=True)
+    scans = db.get_account_market_scans(market_id, limit=100)
+    latest_data_scan = next((scan for scan in scans if scan["snapshot_quality"] != "FAILED"), None)
+    if latest_data_scan and latest_data_scan["snapshot_quality"] == "PARTIAL":
+        lots = [lot for lot in db.get_account_market_lots(market_id, active_only=False)
+                if float(lot["observed_at"]) == float(latest_data_scan["started_at"])]
+    else:
+        lots = db.get_account_market_lots(market_id, active_only=True)
     risk = evaluate_account_market_risk(lots, metrics)
+    risk_evidence = evaluate_risk_evidence_coverage(lots, cfg)
     eligible, failures = _eligibility(metrics, cfg)
     confidence = _confidence(metrics, cfg)
     cohort_sample_sufficient = metrics.median_cohort_size >= cfg.promising_min_cohort_size
     quality_ok = metrics.median_cohort_dispersion <= cfg.promising_max_dispersion and metrics.reappearance_ratio <= cfg.promising_max_reappearance_ratio
-    if confidence != "LOW" and priority.score >= cfg.promising_min_mops and risk.score <= cfg.promising_max_risk and cohort_sample_sufficient and quality_ok:
+    if (confidence != "LOW" and risk_evidence.confidence != "LOW"
+            and priority.score >= cfg.promising_min_mops and risk.score <= cfg.promising_max_risk
+            and cohort_sample_sufficient and quality_ok):
         future = "PROMISING"
     elif metrics.sample_count > 0:
         future = "WATCH"
@@ -323,7 +414,8 @@ def assess_account_market(db, market_id: str, config: Optional[AccountMarketConf
     explanations.append(f"- observed account risk ({risk.score:.0f})" if risk.score >= 50 else f"+ lower observed risk ({risk.score:.0f})")
     seed = ACCOUNT_MARKET_SEEDS[market_id]
     return AccountMarketAssessment(market_id, str(seed["name"]), int(seed["node_id"]), metrics,
-                                   priority, risk, confidence, eligible, failures, future, tuple(explanations))
+                                   priority, risk, confidence, eligible, failures, future,
+                                   tuple(explanations), risk_evidence)
 
 
 def rank_account_markets(db, config: Optional[AccountMarketConfig] = None,
@@ -386,6 +478,8 @@ class AccountMarketObserver:
         self.selector = ActiveMarketSelector(self.config)
         self._rng = rng or random.Random()
         self._next_poll = {market_id: 0.0 for market_id in ACCOUNT_MARKET_SEEDS}
+        self._market_locks = {market_id: asyncio.Lock() for market_id in ACCOUNT_MARKET_SEEDS}
+        self._failure_counts = {market_id: 0 for market_id in ACCOUNT_MARKET_SEEDS}
         self._running = False
 
     def assessments(self, now: Optional[float] = None) -> List[AccountMarketAssessment]:
@@ -397,13 +491,38 @@ class AccountMarketObserver:
     async def poll_market(self, market_id: str, now: Optional[float] = None) -> Dict[str, Any]:
         if market_id not in ACCOUNT_MARKET_SEEDS:
             raise ValueError("unsupported account market")
+        lock = self._market_locks[market_id]
+        if lock.locked():
+            return {"market_id": market_id, "skipped": True, "reason": "scan_already_running"}
         node_id = int(ACCOUNT_MARKET_SEEDS[market_id]["node_id"])
-        # This client method is GET-only by contract and tests.
-        lots = await self.client.fetch_account_market_lots(node_id)
         ts = time.time() if now is None else float(now)
-        result = self.db.record_account_market_observation(market_id, lots, now=ts)
-        result["assessment"] = assess_account_market(self.db, market_id, self.config, ts)
-        return result
+        async with lock:
+            previous_complete_count = self.db.get_last_complete_account_market_count(market_id)
+            try:
+                if hasattr(self.client, "fetch_account_market_snapshot"):
+                    snapshot = await self.client.fetch_account_market_snapshot(
+                        node_id, previous_complete_count=previous_complete_count)
+                else:
+                    lots = await self.client.fetch_account_market_lots(node_id)
+                    quality = SnapshotQuality.COMPLETE if lots else SnapshotQuality.FAILED
+                    snapshot = AccountMarketSnapshot(
+                        market_id, node_id, lots, len(lots) if lots else None, len(lots),
+                        1.0 if lots else None, bool(lots), bool(lots), quality, 0.0,
+                        failure_reason="legacy_fetch_empty" if not lots else "",
+                    )
+            except Exception as error:
+                snapshot = AccountMarketSnapshot(
+                    market_id, node_id, [], None, 0, None, False, False,
+                    SnapshotQuality.FAILED, 0.0,
+                    failure_reason="fetch_exception:" + type(error).__name__,
+                )
+            result = self.db.record_account_market_observation(
+                market_id, snapshot.lots, now=ts,
+                snapshot_quality=snapshot.quality.value,
+                snapshot_diagnostics=snapshot.as_diagnostic(),
+            )
+            result["assessment"] = assess_account_market(self.db, market_id, self.config, ts)
+            return result
 
     async def poll_due_once(self, now: Optional[float] = None) -> List[Dict[str, Any]]:
         ts = time.time() if now is None else float(now)
@@ -413,12 +532,22 @@ class AccountMarketObserver:
             if ts < self._next_poll[market_id]:
                 continue
             try:
-                results.append(await self.poll_market(market_id, ts))
+                result = await self.poll_market(market_id, ts)
+                results.append(result)
             except Exception as error:
                 logger.warning("Account market GET observation failed for %s: %s", market_id, error)
-            if market_id in active:
+                result = {"snapshot_quality": SnapshotQuality.FAILED.value}
+            if result.get("snapshot_quality") == SnapshotQuality.FAILED.value:
+                self._failure_counts[market_id] += 1
+                delay = min(self.config.failure_backoff_max_seconds,
+                            self.config.failure_backoff_initial_seconds * (2 ** (self._failure_counts[market_id] - 1)))
+            elif result.get("skipped"):
+                delay = 5.0
+            elif market_id in active:
+                self._failure_counts[market_id] = 0
                 delay = self._rng.uniform(self.config.active_poll_seconds, self.config.active_poll_max_seconds)
             else:
+                self._failure_counts[market_id] = 0
                 delay = self._rng.uniform(self.config.background_poll_seconds, self.config.background_poll_max_seconds)
             self._next_poll[market_id] = ts + delay
         self.selector.select(self.assessments(ts))
@@ -475,8 +604,14 @@ def format_account_markets(db, selector: Optional[ActiveMarketSelector] = None,
 def format_account_market_detail(db, market_id: str, now: Optional[float] = None) -> str:
     a = assess_account_market(db, market_id, now=now)
     m = a.metrics
+    advertised = f"{m.advertised_market_count:,}" if m.advertised_market_count is not None else "unknown"
+    coverage = f"{m.coverage_ratio:.1%}" if m.coverage_ratio is not None else "unknown"
+    scan_age = f"{m.scan_age_seconds:.0f}s" if m.scan_age_seconds is not None else "unknown"
     lines = [f"<b>{a.name} — Account Market</b>", "<b>OBSERVATION ONLY</b>",
              f"MOPS: {a.mops:.1f} | Observed risk: {a.risk_score:.1f} | Confidence: {a.confidence}",
+             f"Risk evidence: {a.risk_evidence.confidence} ({a.risk_evidence.coverage_ratio:.0%})",
+             f"Parsed: {m.parsed_count:,} | Advertised: {advertised} | Coverage: {coverage}",
+             f"Snapshot: {m.snapshot_quality} | Scan age: {scan_age} | Duration: {m.scan_duration:.2f}s",
              f"Eligible: {'YES' if a.eligible else 'NO'} | Future: {a.future_flip_eligibility}",
              f"Lots/sellers: {m.active_lots:,}/{m.independent_sellers:,}",
              f"Cheap segment: {m.cheap_lots:,} lots, {m.cheap_independent_sellers:,} sellers",

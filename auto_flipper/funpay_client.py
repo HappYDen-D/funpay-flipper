@@ -1181,8 +1181,89 @@ class FunPayClient:
         The allowlist prevents this research entry point from being repurposed
         for arbitrary nodes. It never calls checkout, runner, messages, or POST.
         """
-        from auto_flipper.config import ACCOUNT_MARKET_SEEDS
-        allowed = {int(seed["node_id"]) for seed in ACCOUNT_MARKET_SEEDS.values()}
-        if int(node_id) not in allowed:
+        snapshot = await self.fetch_account_market_snapshot(node_id)
+        return snapshot.lots
+
+    @staticmethod
+    def _parse_advertised_market_count(html_content: str, node_id: int) -> Optional[int]:
+        """Read the active node counter shown by FunPay, when present."""
+        for attributes, body in re.findall(r"<a\b([^>]*)>(.*?)</a>", html_content,
+                                            re.DOTALL | re.IGNORECASE):
+            href = re.search(r'href=["\']([^"\']+)["\']', attributes, re.IGNORECASE)
+            classes = re.search(r'class=["\']([^"\']+)["\']', attributes, re.IGNORECASE)
+            if not href or not classes:
+                continue
+            if not re.search(rf"(?:https://funpay\.com)?/lots/{int(node_id)}/(?:$|[?#])", href.group(1)):
+                continue
+            class_names = set(classes.group(1).lower().split())
+            if not {"counter-item", "active"}.issubset(class_names):
+                continue
+            value = re.search(r'class=["\'][^"\']*\bcounter-value\b[^"\']*["\'][^>]*>\s*([\d\s\xa0]+)\s*<',
+                              body, re.IGNORECASE)
+            return int(re.sub(r"\D", "", value.group(1))) if value else None
+        return None
+
+    async def fetch_account_market_snapshot(self, node_id: int, *,
+                                            previous_complete_count: Optional[int] = None):
+        """Fetch one allowlisted account node and return integrity metadata.
+
+        Exactly one GET is attempted. Transport errors, 429, invalid HTML, and
+        parser exceptions become FAILED diagnostics rather than an empty market.
+        """
+        from auto_flipper.account_snapshot import AccountMarketSnapshot, classify_snapshot_quality
+        from auto_flipper.config import (
+            ACCOUNT_MARKET_SEEDS, ACCOUNT_SNAPSHOT_MIN_COVERAGE_RATIO,
+            ACCOUNT_SNAPSHOT_MIN_PREVIOUS_RATIO,
+        )
+        market_id = next((mid for mid, seed in ACCOUNT_MARKET_SEEDS.items()
+                          if int(seed["node_id"]) == int(node_id)), None)
+        if market_id is None:
             raise ValueError("unsupported account observation node")
-        return await self.fetch_market_lots([int(node_id)], observation_only=True)
+        started = time.monotonic()
+        status = None
+        try:
+            async with self._http_client(follow_redirects=True) as client:
+                response = await client.get(f"{FUNPAY_BASE_URL}/lots/{int(node_id)}/")
+            status = response.status_code
+            problem = self._response_problem(response)
+            if problem or response.status_code != 200:
+                quality, coverage, reason = classify_snapshot_quality(
+                    advertised_market_count=None, parsed_count=0,
+                    fetch_success=False, parse_success=False,
+                )
+                failure_reason = ("HTTP_429_RATE_LIMITED" if status == 429 else
+                                  problem or f"HTTP_{status}" or reason)
+                return AccountMarketSnapshot(market_id, int(node_id), [], None, 0, coverage,
+                    False, False, quality, time.monotonic() - started, status, failure_reason)
+            html_content = response.text
+            advertised = self._parse_advertised_market_count(html_content, int(node_id))
+            structural = "showcase-table" in html_content
+            try:
+                lots = self.parse_lots(html_content, node_id=int(node_id), include_unknown_currency=True)
+                lots = list({lot["lot_id"]: lot for lot in lots}.values())
+                parse_success = structural and advertised is not None and (bool(lots) or advertised == 0)
+                if advertised is None:
+                    parse_reason = "advertised_count_missing"
+                else:
+                    parse_reason = "" if parse_success else "invalid_or_empty_market_html"
+            except Exception as error:
+                lots, parse_success = [], False
+                parse_reason = "parser_exception:" + type(error).__name__
+            quality, coverage, quality_reason = classify_snapshot_quality(
+                advertised_market_count=advertised, parsed_count=len(lots),
+                fetch_success=True, parse_success=parse_success,
+                previous_complete_count=previous_complete_count,
+                minimum_coverage_ratio=ACCOUNT_SNAPSHOT_MIN_COVERAGE_RATIO,
+                minimum_previous_ratio=ACCOUNT_SNAPSHOT_MIN_PREVIOUS_RATIO,
+            )
+            return AccountMarketSnapshot(market_id, int(node_id), lots, advertised, len(lots), coverage,
+                True, parse_success, quality, time.monotonic() - started, status,
+                quality_reason or parse_reason)
+        except Exception as error:
+            quality, coverage, reason = classify_snapshot_quality(
+                advertised_market_count=None, parsed_count=0,
+                fetch_success=False, parse_success=False,
+            )
+            return AccountMarketSnapshot(market_id, int(node_id), [], None, 0, coverage,
+                False, False, quality, time.monotonic() - started, status,
+                f"{reason}:{type(error).__name__}")

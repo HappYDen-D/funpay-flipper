@@ -4,6 +4,7 @@ import shutil
 import tempfile
 import types
 import unittest
+import asyncio
 from unittest.mock import AsyncMock
 
 from auto_flipper.account_cohort_normalizer import (
@@ -18,8 +19,15 @@ from auto_flipper.account_market_observer import (
     ActiveMarketSelector,
     assess_account_market,
     evaluate_account_market_risk,
+    evaluate_risk_evidence_coverage,
     evaluate_market_observation_priority,
+    format_account_market_detail,
     rank_account_markets,
+)
+from auto_flipper.account_snapshot import (
+    AccountMarketSnapshot,
+    SnapshotQuality,
+    classify_snapshot_quality,
 )
 from auto_flipper.database import Database
 
@@ -90,6 +98,73 @@ class TestAccountStoreAndScoring(unittest.TestCase):
         self.assertEqual(self.db.get_account_market_events("funpay:account:436")[-1]["event_type"], "DISAPPEARED")
         self.assertNotIn("SOLD", {e["event_type"] for e in self.db.get_account_market_events("funpay:account:436")})
 
+    def test_truncated_snapshot_does_not_generate_disappearance(self):
+        first = [lot("a", 436, "25000 trophies 65 brawlers", seller="s1"),
+                 lot("b", 436, "25000 trophies 65 brawlers", seller="s2")]
+        second = [lot("b", 436, "25000 trophies 65 brawlers", seller="s2"),
+                  lot("c", 436, "25000 trophies 65 brawlers", seller="s3")]
+        self.db.record_account_market_observation("funpay:account:436", first, now=100,
+                                                  force_sample=True, snapshot_quality="PARTIAL")
+        result = self.db.record_account_market_observation("funpay:account:436", second, now=400,
+                                                           force_sample=True, snapshot_quality="PARTIAL")
+        self.assertEqual(result["disappearance_count"], 0)
+        self.assertEqual(self.db.get_account_market_events("funpay:account:436"), [])
+        all_rows = self.db.get_account_market_lots("funpay:account:436", active_only=False)
+        self.assertTrue(next(row for row in all_rows if row["lot_id"] == "a")["is_active"])
+
+    def test_cap_boundary_rotation_does_not_mark_existing_lot_disappeared(self):
+        first = [lot("edge-a", 436, "25000 trophies 65 brawlers", seller="s1"),
+                 lot("edge-b", 436, "25000 trophies 65 brawlers", seller="s2")]
+        shifted = [lot("edge-b", 436, "25000 trophies 65 brawlers", seller="s2"),
+                   lot("edge-c", 436, "25000 trophies 65 brawlers", seller="s3")]
+        self.db.record_account_market_observation("funpay:account:436", first, now=100,
+                                                  force_sample=True, snapshot_quality="PARTIAL")
+        self.db.record_account_market_observation("funpay:account:436", shifted, now=400,
+                                                  force_sample=True, snapshot_quality="PARTIAL")
+        edge = next(row for row in self.db.get_account_market_lots(
+            "funpay:account:436", active_only=False) if row["lot_id"] == "edge-a")
+        self.assertTrue(edge["is_active"])
+        self.assertIsNone(edge["disappeared_at"])
+
+    def test_failed_snapshot_preserves_state_and_turnover(self):
+        rows = [lot("a", 436, "25000 trophies 65 brawlers", seller="s1")]
+        self.db.record_account_market_observation("funpay:account:436", rows, now=100, force_sample=True)
+        result = self.db.record_account_market_observation(
+            "funpay:account:436", [], now=400, force_sample=True, snapshot_quality="FAILED",
+            snapshot_diagnostics={"fetch_success": False, "parse_success": False,
+                                  "parsed_count": 0, "failure_reason": "HTTP_429_RATE_LIMITED"})
+        self.assertEqual(result["disappearance_count"], 0)
+        self.assertEqual(len(self.db.get_account_market_lots("funpay:account:436")), 1)
+        self.assertEqual(self.db.get_latest_account_market_scan("funpay:account:436")["snapshot_quality"], "FAILED")
+
+    def test_sudden_parse_count_collapse_is_partial(self):
+        quality, coverage, reason = classify_snapshot_quality(
+            advertised_market_count=None, parsed_count=150, fetch_success=True, parse_success=True,
+            previous_complete_count=2000, minimum_previous_ratio=.60)
+        self.assertEqual(quality, SnapshotQuality.PARTIAL)
+        self.assertIsNone(coverage)
+        self.assertEqual(reason, "sudden_parsed_count_collapse")
+
+    def test_partial_snapshot_contributes_zero_turnover(self):
+        rows = [lot(f"a{i}", 436, "25000 trophies 65 brawlers", seller=f"s{i}") for i in range(3)]
+        self.db.record_account_market_observation("funpay:account:436", rows, now=100,
+                                                  force_sample=True, snapshot_quality="PARTIAL")
+        self.db.record_account_market_observation("funpay:account:436", rows[1:], now=400,
+                                                  force_sample=True, snapshot_quality="PARTIAL")
+        assessment = assess_account_market(self.db, "funpay:account:436", self.cfg, now=400)
+        self.assertEqual(assessment.metrics.disappearance_count, 0)
+        self.assertEqual(assessment.priority.components["turnover_proxy_score"], 0.0)
+
+    def test_complete_snapshot_can_generate_disappearance(self):
+        rows = [lot("a", 436, "25000 trophies 65 brawlers", seller="s1"),
+                lot("b", 436, "25000 trophies 65 brawlers", seller="s2")]
+        self.db.record_account_market_observation("funpay:account:436", rows, now=100,
+                                                  force_sample=True, snapshot_quality="COMPLETE")
+        result = self.db.record_account_market_observation("funpay:account:436", rows[1:], now=400,
+                                                           force_sample=True, snapshot_quality="COMPLETE")
+        self.assertEqual(result["disappearance_count"], 1)
+        self.assertEqual(self.db.get_account_market_events("funpay:account:436")[-1]["event_type"], "DISAPPEARED")
+
     def _populate(self, market_id, node, title_template, count=4, t0=1_700_000_000):
         rows = [lot(f"{node}-{i}", node, title_template.format(i=i), 100 + i * 10, f"s{i}") for i in range(count)]
         self.db.record_account_market_observation(market_id, rows, now=t0, force_sample=True)
@@ -118,6 +193,48 @@ class TestAccountStoreAndScoring(unittest.TestCase):
         ], assessment.metrics)
         self.assertEqual(original.score, assessment.mops)
         self.assertNotEqual(altered_risk.score, assessment.risk_score)
+
+    def test_missing_risk_evidence_does_not_imply_high_confidence(self):
+        evidence = evaluate_risk_evidence_coverage([
+            {"risk_flags": [], "title": "25000 trophies 65 brawlers"},
+            {"risk_flags": [], "title": "TH12 heroes 30/30"},
+        ], self.cfg)
+        self.assertEqual(evidence.confidence, "LOW")
+        self.assertEqual(evidence.coverage_ratio, 0.0)
+
+    def test_promising_is_blocked_by_insufficient_risk_evidence(self):
+        rows = [lot(f"r{i}", 436, "25000 trophies 65 brawlers", seller=f"s{i}") for i in range(6)]
+        self.db.record_account_market_observation("funpay:account:436", rows, now=100, force_sample=True)
+        self.db.record_account_market_observation("funpay:account:436", rows, now=400, force_sample=True)
+        cfg = AccountMarketConfig(
+            min_active_lots=1, min_independent_sellers=1, min_cheap_lots=1,
+            min_cheap_sellers=1, min_parseable_ratio=.1, max_largest_seller_share=1,
+            medium_min_hours=0, medium_min_samples=2, high_min_hours=100,
+            promising_min_mops=0, promising_max_risk=100, promising_min_cohort_size=1,
+            promising_max_dispersion=999, promising_max_reappearance_ratio=1,
+        )
+        assessment = assess_account_market(self.db, "funpay:account:436", cfg, now=400)
+        self.assertEqual(assessment.confidence, "MEDIUM")
+        self.assertEqual(assessment.risk_evidence.confidence, "LOW")
+        self.assertNotEqual(assessment.future_flip_eligibility, "PROMISING")
+
+    def test_telegram_detail_includes_integrity_and_risk_diagnostics(self):
+        rows = [lot("diag", 436, "25000 trophies 65 brawlers", seller="s1")]
+        self.db.record_account_market_observation(
+            "funpay:account:436", rows, now=100, force_sample=True,
+            snapshot_quality="PARTIAL",
+            snapshot_diagnostics={"advertised_market_count": 10, "parsed_count": 1,
+                                  "coverage_ratio": .1, "scan_duration": 2.5})
+        message = format_account_market_detail(self.db, "funpay:account:436", now=105)
+        self.assertIn("Parsed: 1 | Advertised: 10 | Coverage: 10.0%", message)
+        self.assertIn("Snapshot: PARTIAL | Scan age: 5s | Duration:", message)
+        self.assertIn("Risk evidence: LOW", message)
+
+    def test_advertised_count_parser_accepts_grouped_digits(self):
+        from auto_flipper.funpay_client import FunPayClient
+        html = ('<a href="https://funpay.com/lots/436/" class="counter-item active">'
+                '<div class="counter-value">14 416</div></a>')
+        self.assertEqual(FunPayClient._parse_advertised_market_count(html, 436), 14416)
 
     def test_source_barrier_blocks_claim(self):
         candidate = {"payload": {"source_type": ACCOUNT_OBSERVATION_SOURCE,
@@ -162,6 +279,54 @@ class TestSelectionAndReadOnly(unittest.IsolatedAsyncioTestCase):
             await FunPayClient().checkout_lot("funpay_123", 100, dry_run=True,
                                              source_type=ACCOUNT_OBSERVATION_SOURCE,
                                              purchase_eligible=False)
+
+    async def test_concurrent_same_market_scan_is_skipped(self):
+        root = tempfile.mkdtemp(prefix="account-lock-")
+        started, release = asyncio.Event(), asyncio.Event()
+        class Client:
+            calls = 0
+            async def fetch_account_market_snapshot(self, node_id, **kwargs):
+                self.calls += 1
+                started.set()
+                await release.wait()
+                return AccountMarketSnapshot("funpay:account:436", 436, [], 0, 0, 1.0,
+                    True, True, SnapshotQuality.COMPLETE, .1, 200)
+        try:
+            db = Database(os.path.join(root, "observer.db"))
+            client = Client()
+            observer = AccountMarketObserver(client, db)
+            first = asyncio.create_task(observer.poll_market("funpay:account:436", now=100))
+            await started.wait()
+            second = await observer.poll_market("funpay:account:436", now=101)
+            release.set()
+            await first
+            self.assertTrue(second["skipped"])
+            self.assertEqual(client.calls, 1)
+        finally:
+            shutil.rmtree(root, ignore_errors=True)
+
+    async def test_one_broken_market_does_not_stop_others(self):
+        root = tempfile.mkdtemp(prefix="account-isolation-")
+        class Client:
+            async def fetch_account_market_snapshot(self, node_id, **kwargs):
+                market = {436: "funpay:account:436", 147: "funpay:account:147", 248: "funpay:account:248"}[node_id]
+                if node_id == 436:
+                    return AccountMarketSnapshot(market, node_id, [], None, 0, None,
+                        False, False, SnapshotQuality.FAILED, .1, 429, "HTTP_429_RATE_LIMITED")
+                title = "TH12 heroes 30/30" if node_id == 147 else "PC 20 skins full access"
+                rows = [lot(str(node_id), node_id, title)]
+                return AccountMarketSnapshot(market, node_id, rows, 1, 1, 1.0,
+                    True, True, SnapshotQuality.COMPLETE, .1, 200)
+        try:
+            db = Database(os.path.join(root, "observer.db"))
+            observer = AccountMarketObserver(Client(), db)
+            results = await observer.poll_due_once(now=100)
+            self.assertEqual(len(results), 3)
+            self.assertEqual(db.get_latest_account_market_scan("funpay:account:436")["snapshot_quality"], "FAILED")
+            self.assertEqual(len(db.get_account_market_lots("funpay:account:147")), 1)
+            self.assertEqual(len(db.get_account_market_lots("funpay:account:248")), 1)
+        finally:
+            shutil.rmtree(root, ignore_errors=True)
 
 
 if __name__ == "__main__":

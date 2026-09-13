@@ -120,6 +120,8 @@ def _risk_flags(text: str, lot: Mapping[str, Any]) -> Tuple[str, ...]:
         "warranty_claim": r"\b(гарант\w*|warranty)\b",
         "ambiguous_access": r"\b(частичный доступ|semi access|без смены|вход по коду)\b",
         "platform_linking": r"\b(привяз\w*|linked|unlink|отвяз\w*|cross.?platform)\b",
+        "recovery_claim": r"\b(восстанов\w*|recovery|recoverable|невосстанов\w*)\b",
+        "transfer_claim": r"\b(передач\w*|transfer|перепривяз\w*)\b",
     }
     for name, pattern in rules.items():
         if re.search(pattern, text):

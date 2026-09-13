@@ -181,10 +181,26 @@ class MarketHistoryStore:
                 disappearance_count INTEGER NOT NULL,
                 reappearance_count INTEGER NOT NULL
             )""",
+            """CREATE TABLE IF NOT EXISTS account_market_scans (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                market_id TEXT NOT NULL,
+                node_id INTEGER NOT NULL,
+                started_at REAL NOT NULL,
+                advertised_market_count INTEGER,
+                parsed_count INTEGER NOT NULL,
+                coverage_ratio REAL,
+                fetch_success INTEGER NOT NULL,
+                parse_success INTEGER NOT NULL,
+                snapshot_quality TEXT NOT NULL,
+                scan_duration REAL NOT NULL,
+                http_status INTEGER,
+                failure_reason TEXT NOT NULL DEFAULT ''
+            )""",
             "CREATE INDEX IF NOT EXISTS idx_aml_market_active ON account_market_lots (market_id, is_active)",
             "CREATE INDEX IF NOT EXISTS idx_ame_market_time ON account_market_events (market_id, timestamp)",
             "CREATE INDEX IF NOT EXISTS idx_ams_market_time ON account_market_samples (market_id, timestamp)",
             "CREATE INDEX IF NOT EXISTS idx_acs_cohort_time ON account_cohort_samples (market_id, cohort_id, timestamp)",
+            "CREATE INDEX IF NOT EXISTS idx_am_scan_market_time ON account_market_scans (market_id, started_at)",
         )
         for sql in statements:
             conn.execute(sql)
@@ -600,12 +616,15 @@ class MarketHistoryStore:
         now: Optional[float] = None,
         sample_interval_seconds: float = 180.0,
         force_sample: bool = False,
+        snapshot_quality: str = "COMPLETE",
+        snapshot_diagnostics: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """Record one complete scan of exactly one account market.
+        """Record one integrity-qualified scan of exactly one account market.
 
-        Absence can only produce DISAPPEARED inside ``market_id``. The method
-        rejects mixed-node input so a partial or malformed call fails closed.
+        Absence can only produce DISAPPEARED for a COMPLETE snapshot inside
+        ``market_id``. PARTIAL/FAILED scans preserve prior active state.
         """
+        processing_started = time.monotonic()
         from auto_flipper.account_cohort_normalizer import (
             ACCOUNT_OBSERVATION_SOURCE,
             normalize_account_lot,
@@ -618,6 +637,19 @@ class MarketHistoryStore:
         if any(int(lot.get("node_id", node_id)) != node_id for lot in observed_lots):
             raise ValueError("mixed market observation is forbidden")
         ts = time.time() if now is None else float(now)
+        quality = str(getattr(snapshot_quality, "value", snapshot_quality)).upper()
+        if quality not in ("COMPLETE", "PARTIAL", "FAILED"):
+            raise ValueError("invalid snapshot quality")
+        diagnostics = dict(snapshot_diagnostics or {})
+        diagnostics.setdefault("node_id", node_id)
+        diagnostics.setdefault("advertised_market_count", None)
+        diagnostics.setdefault("parsed_count", len(observed_lots))
+        diagnostics.setdefault("coverage_ratio", None)
+        diagnostics.setdefault("fetch_success", quality != "FAILED")
+        diagnostics.setdefault("parse_success", quality != "FAILED")
+        diagnostics.setdefault("scan_duration", 0.0)
+        diagnostics.setdefault("http_status", None)
+        diagnostics.setdefault("failure_reason", "")
         normalized = []
         for lot in observed_lots:
             if "lot_id" not in lot:
@@ -630,7 +662,9 @@ class MarketHistoryStore:
                    "price_change_count": 0, "stock_change_count": 0,
                    "samples_created": 0, "cohort_samples_created": 0,
                    "lots_observed": len(current),
-                   "classified": sum(1 for _, r in normalized if r.classified)}
+                   "classified": sum(1 for _, r in normalized if r.classified),
+                   "snapshot_quality": quality,
+                   "reconciliation_performed": quality == "COMPLETE"}
 
         def price_of(lot):
             try:
@@ -639,11 +673,22 @@ class MarketHistoryStore:
                 return None
 
         with self._lock, self._get_connection() as conn:
+            conn.execute("""INSERT INTO account_market_scans
+                (market_id,node_id,started_at,advertised_market_count,parsed_count,coverage_ratio,
+                 fetch_success,parse_success,snapshot_quality,scan_duration,http_status,failure_reason)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (market_id, int(diagnostics["node_id"]), ts, diagnostics["advertised_market_count"],
+                 int(diagnostics["parsed_count"]), diagnostics["coverage_ratio"],
+                 int(bool(diagnostics["fetch_success"])), int(bool(diagnostics["parse_success"])),
+                 quality, float(diagnostics["scan_duration"]), diagnostics["http_status"],
+                 str(diagnostics["failure_reason"])))
+            if quality == "FAILED":
+                return summary
             previous_rows = conn.execute(
                 "SELECT * FROM account_market_lots WHERE market_id=? AND is_active=1", (market_id,)
             ).fetchall()
             previous = {row["lot_id"]: dict(row) for row in previous_rows}
-            for lot_id in sorted(set(previous) - set(current)):
+            for lot_id in (sorted(set(previous) - set(current)) if quality == "COMPLETE" else ()):
                 old = previous[lot_id]
                 conn.execute("UPDATE account_market_lots SET is_active=0, disappeared_at=? WHERE market_id=? AND lot_id=?",
                              (ts, market_id, lot_id))
@@ -673,29 +718,30 @@ class MarketHistoryStore:
                          stock, str(lot.get("title") or ""), str(lot.get("url") or ""), result.cohort_id,
                          result.confidence, int(result.classified), json.dumps(result.features, ensure_ascii=False, sort_keys=True),
                          json.dumps(list(result.risk_flags), ensure_ascii=False), ACCOUNT_OBSERVATION_SOURCE, ts, ts, ts))
-                    conn.execute("""INSERT INTO account_market_events
-                        (market_id,lot_id,cohort_id,event_type,old_price,new_price,old_stock,new_stock,timestamp)
-                        VALUES(?,?,?,'NEW',NULL,?,NULL,?,?)""",
-                        (market_id, lot_id, result.cohort_id, price, stock, ts))
-                    summary["new_count"] += 1
+                    if quality == "COMPLETE":
+                        conn.execute("""INSERT INTO account_market_events
+                            (market_id,lot_id,cohort_id,event_type,old_price,new_price,old_stock,new_stock,timestamp)
+                            VALUES(?,?,?,'NEW',NULL,?,NULL,?,?)""",
+                            (market_id, lot_id, result.cohort_id, price, stock, ts))
+                        summary["new_count"] += 1
                 else:
                     old = dict(existing_row)
                     reappeared = not bool(old["is_active"])
                     price_changed = old["price"] != price
                     stock_changed = int(old["stock"]) != stock
-                    if reappeared:
+                    if reappeared and quality == "COMPLETE":
                         conn.execute("""INSERT INTO account_market_events
                             (market_id,lot_id,cohort_id,event_type,old_price,new_price,old_stock,new_stock,timestamp)
                             VALUES(?,?,?,'REAPPEARED',?,?,?,?,?)""",
                             (market_id, lot_id, result.cohort_id, old["price"], price, old["stock"], stock, ts))
                         summary["reappearance_count"] += 1
-                    if price_changed:
+                    if price_changed and quality == "COMPLETE":
                         conn.execute("""INSERT INTO account_market_events
                             (market_id,lot_id,cohort_id,event_type,old_price,new_price,old_stock,new_stock,timestamp)
                             VALUES(?,?,?,'PRICE_CHANGE',?,?,?,?,?)""",
                             (market_id, lot_id, result.cohort_id, old["price"], price, old["stock"], stock, ts))
                         summary["price_change_count"] += 1
-                    if stock_changed and not reappeared:
+                    if stock_changed and not reappeared and quality == "COMPLETE":
                         conn.execute("""INSERT INTO account_market_events
                             (market_id,lot_id,cohort_id,event_type,old_price,new_price,old_stock,new_stock,timestamp)
                             VALUES(?,?,?,'STOCK_CHANGE',?,?,?,?,?)""",
@@ -710,20 +756,25 @@ class MarketHistoryStore:
                          str(lot.get("url") or ""), result.cohort_id, result.confidence, int(result.classified),
                          json.dumps(result.features, ensure_ascii=False, sort_keys=True),
                          json.dumps(list(result.risk_flags), ensure_ascii=False), ACCOUNT_OBSERVATION_SOURCE, ts, ts,
-                         int(old["reappearance_count"]) + int(reappeared),
-                         int(old["price_change_count"]) + int(price_changed), market_id, lot_id))
+                          int(old["reappearance_count"]) + int(reappeared and quality == "COMPLETE"),
+                          int(old["price_change_count"]) + int(price_changed and quality == "COMPLETE"), market_id, lot_id))
 
             last = conn.execute("SELECT timestamp FROM account_market_samples WHERE market_id=? ORDER BY timestamp DESC LIMIT 1",
                                 (market_id,)).fetchone()
             if force_sample or last is None or ts - float(last["timestamp"]) >= sample_interval_seconds:
-                rows = conn.execute("SELECT * FROM account_market_lots WHERE market_id=? AND is_active=1", (market_id,)).fetchall()
+                if quality == "COMPLETE":
+                    rows = conn.execute("SELECT * FROM account_market_lots WHERE market_id=? AND is_active=1", (market_id,)).fetchall()
+                else:
+                    rows = conn.execute("SELECT * FROM account_market_lots WHERE market_id=? AND observed_at=?", (market_id, ts)).fetchall()
                 active = [dict(row) for row in rows]
                 rub = [r for r in active if r["currency"] == "RUB" and r["price"] is not None]
                 cheap = [r for r in rub if float(r["price"]) <= ACCOUNT_CHEAP_RUB_THRESHOLD]
                 sellers = {r["seller"] for r in active}
                 classified = [r for r in active if r["classified"]]
                 metadata = {"unknown_currency_count": len(active) - len(rub), "source_type": ACCOUNT_OBSERVATION_SOURCE,
-                            "purchase_eligible": False}
+                            "purchase_eligible": False, "snapshot_quality": quality,
+                            "advertised_market_count": diagnostics["advertised_market_count"],
+                            "coverage_ratio": diagnostics["coverage_ratio"]}
                 conn.execute("""INSERT INTO account_market_samples
                     (timestamp,market_id,active_lots,independent_sellers,cheap_lot_count,
                      cheap_independent_sellers,classified_lots,metrics_json) VALUES(?,?,?,?,?,?,?,?)""",
@@ -757,6 +808,10 @@ class MarketHistoryStore:
                          counts.get((cohort_id, "NEW"), 0), counts.get((cohort_id, "DISAPPEARED"), 0),
                          counts.get((cohort_id, "REAPPEARED"), 0)))
                     summary["cohort_samples_created"] += 1
+            total_scan_duration = float(diagnostics["scan_duration"]) + (time.monotonic() - processing_started)
+            conn.execute("UPDATE account_market_scans SET scan_duration=? WHERE market_id=? AND started_at=?",
+                         (total_scan_duration, market_id, ts))
+            summary["scan_duration"] = total_scan_duration
         return summary
 
     def get_account_market_lots(self, market_id: str, active_only: bool = True) -> List[Dict[str, Any]]:
@@ -800,3 +855,38 @@ class MarketHistoryStore:
                 rows = conn.execute("SELECT * FROM account_cohort_samples WHERE market_id=? AND cohort_id=? ORDER BY timestamp DESC LIMIT ?",
                                     (market_id, cohort_id, int(limit))).fetchall()
             return [dict(row) for row in rows]
+
+    def get_account_market_scans(self, market_id: str, limit: int = 100) -> List[Dict[str, Any]]:
+        with self._get_connection() as conn:
+            rows = conn.execute(
+                "SELECT * FROM account_market_scans WHERE market_id=? ORDER BY started_at DESC,id DESC LIMIT ?",
+                (market_id, int(limit)),
+            ).fetchall()
+            return [dict(row) for row in rows]
+
+    def get_latest_account_market_scan(self, market_id: str) -> Optional[Dict[str, Any]]:
+        rows = self.get_account_market_scans(market_id, limit=1)
+        return rows[0] if rows else None
+
+    def get_last_complete_account_market_count(self, market_id: str) -> Optional[int]:
+        with self._get_connection() as conn:
+            row = conn.execute(
+                """SELECT parsed_count FROM account_market_scans
+                   WHERE market_id=? AND snapshot_quality='COMPLETE'
+                   ORDER BY started_at DESC,id DESC LIMIT 1""", (market_id,)
+            ).fetchone()
+            return int(row["parsed_count"]) if row else None
+
+    def get_account_market_lots_observed_at(self, market_id: str, observed_at: float) -> List[Dict[str, Any]]:
+        with self._get_connection() as conn:
+            rows = conn.execute(
+                "SELECT * FROM account_market_lots WHERE market_id=? AND observed_at=? ORDER BY price IS NULL,price,lot_id",
+                (market_id, float(observed_at)),
+            ).fetchall()
+            result = []
+            for row in rows:
+                item = dict(row)
+                item["features"] = json.loads(item.pop("features_json"))
+                item["risk_flags"] = json.loads(item.pop("risk_flags_json"))
+                result.append(item)
+            return result

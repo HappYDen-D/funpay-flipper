@@ -75,6 +75,11 @@ mass-identical listings. It is a risk proxy, not a statement that an account is
 safe or unsafe. Thus a market may legitimately have both high MOPS and high
 observed risk.
 
+`RiskEvidenceCoverage` separately records how much listing evidence exists for
+access, email, recovery, transfer, warranty, and platform-linking dimensions.
+Missing evidence is `LOW` confidence, not proof of safety. A low risk score may
+therefore be displayed as, for example, `Risk: 14; Risk evidence: LOW`.
+
 ## Cohort normalization
 
 Normalization is deterministic, uses no LLM, and prefers false splits to false
@@ -108,6 +113,35 @@ sellers, cheap-lot count, and transition counts.
 
 No backfill invents night observations, and one HTTP GET can never yield HIGH.
 
+## Snapshot integrity and runtime truncation
+
+The exact 4,000 / 2,000 / 2,000 result is classified as
+`RUNTIME_TRUNCATION`, not `SMOKE_ONLY_LIMIT`. There is no `max_lots`, numeric
+slice, pagination cap, or debug cap in the observer or smoke runner. FunPay's
+public server response contains only those listing rows even though the active
+category counters advertise more. The bundled page JavaScript progressively
+reveals batches already present in the DOM; it does not fetch the missing rows.
+The runtime and smoke runner use the same one-GET fetch path, so both see the
+same truncated response.
+
+Every scan stores `advertised_market_count`, `parsed_count`, `coverage_ratio`,
+fetch/parse success, HTTP status/failure reason, and total scan duration. Its
+quality is fail-closed:
+
+- `COMPLETE`: transport and parsing succeeded, advertised coverage is at least
+  98%, and the parsed count did not collapse below 60% of the previous complete
+  scan;
+- `PARTIAL`: the response parsed, but advertised coverage or the previous-scan
+  count gate indicates truncation;
+- `FAILED`: transport, HTTP, structural HTML, or parser validation failed.
+
+The two thresholds are configurable. Only `COMPLETE` scans reconcile absence
+and emit transition events. `PARTIAL` scans upsert positively observed rows but
+preserve unseen active rows; `FAILED` scans do not mutate lot state. Neither
+quality creates `NEW`, `DISAPPEARED`, reappearance, price/stock events, nor
+turnover. This prevents a lot crossing the server response boundary from being
+mistaken for a disappearance.
+
 ## Polling and selection
 
 After baseline data exists, eligible markets are ranked only by MOPS. At most
@@ -115,6 +149,12 @@ two are ACTIVE WATCH (default random interval 3–5 minutes); the rest are
 BACKGROUND (12–15 minutes). Names receive no bonus. A challenger must exceed
 an incumbent by 5 points for 3 consecutive samples before replacement, avoiding
 selection thrashing. All intervals and hysteresis values are configurable.
+
+Each market has a non-overlap lock: a due tick is skipped while that market's
+previous scan is still running. Failures are isolated per market. A timeout,
+429, invalid HTML, or parser exception records a `FAILED` diagnostic, preserves
+existing rows, and applies configurable exponential backoff (default 5 to 30
+minutes) without immediate retries; other markets continue normally.
 
 ## Telegram
 
@@ -125,14 +165,16 @@ selection thrashing. All intervals and hysteresis values are configurable.
 - `/accountmarkets fortnite|fn|фортнайт`;
 - `/accountmarkets summary` — only actually recorded history and top cohorts.
 
-Every detail view says `OBSERVATION ONLY`.
+Every detail view says `OBSERVATION ONLY` and includes parsed/advertised counts,
+coverage, snapshot quality, scan age/duration, and risk-evidence confidence.
 
 ## FutureFlipEligibility
 
 `NOT_READY`, `WATCH`, and `PROMISING` describe whether the market is worth a
 future Account Flip Score stage. `PROMISING` requires at least MEDIUM
 confidence, MOPS >= 60, observed risk <= 70, sufficient cohort size, acceptable
-dispersion, and non-excessive reappearance. It never authorizes BUY.
+dispersion, non-excessive reappearance, and at least MEDIUM risk-evidence
+coverage. It never authorizes BUY.
 
 ## Safety guarantees
 
@@ -158,22 +200,23 @@ history; a smoke test cannot supply it.
 
 ## Live smoke
 
-Executed 2026-09-13 02:48:18–02:48:29 Europe/Moscow using
+Executed 2026-09-13 03:43:33–03:43:38 Europe/Moscow using
 `run_account_market_smoke.py` and a disposable SQLite database:
 
-| Market | Parsed | Sellers | <=500 RUB | Classified | Unclassified | MOPS | Risk | Confidence | Eligible |
-|---|---:|---:|---:|---:|---:|---:|---:|---|---|
-| Brawl Stars | 4,000 | 2,010 | 1,304 | 3,559 | 441 | 83.45 | 13.39 | LOW | yes |
-| Clash of Clans | 2,000 | 578 | 471 | 778 | 1,222 | 74.08 | 12.75 | LOW | yes |
-| Fortnite | 2,000 | 912 | 585 | 112 | 1,888 | 69.80 | 23.87 | LOW | no |
+| Market | Parsed / advertised | Coverage | Snapshot | Sellers | <=500 RUB | Classified | MOPS | Risk / evidence | Eligible |
+|---|---:|---:|---|---:|---:|---:|---:|---:|---|
+| Brawl Stars | 4,000 / 14,410 | 27.76% | PARTIAL | 2,015 | 1,297 | 3,569 | 83.47 | 14.29 / LOW | yes |
+| Clash of Clans | 2,000 / 2,268 | 88.18% | PARTIAL | 585 | 472 | 775 | 74.08 | 13.54 / LOW | yes |
+| Fortnite | 2,000 / 2,415 | 82.82% | PARTIAL | 916 | 581 | 114 | 69.82 | 23.88 / LOW | no |
 
 Requests: exactly three public GETs, one for each allowlisted URL. POST count:
-zero. These are one-snapshot values, not night history. Turnover is therefore
-zero and confidence remains LOW. The initial active candidates are Brawl Stars
-and Clash of Clans; Fortnite fails the parseable-ratio gate (5.6%). This can
-change only after real subsequent observations and hysteresis confirmation.
+zero. All three responses were correctly rejected for reconciliation as
+`PARTIAL`; none produced transition events or turnover. These are one-snapshot
+values, not night history, so observation confidence remains LOW. Risk-evidence
+coverage was also LOW (3.23%, 4.02%, and 8.66%, respectively), independently of
+the numeric risk score. Fortnite fails the parseable-ratio gate (5.7%).
 
 The most important finding is that large generic cohorts still have very wide
 within-cohort price dispersion (for example, the largest Brawl cohort had
-dispersion about 4.70). MOPS does penalize this, but tighter progression bands
+dispersion about 4.82). MOPS does penalize this, but tighter progression bands
 or more structured features may be needed before any later Account Flip Score.
