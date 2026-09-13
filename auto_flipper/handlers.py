@@ -68,11 +68,12 @@ def format_goal_amount(value):
 async def edit_text_if_changed(message, text, **kwargs):
     """Ignore only Telegram's harmless duplicate edit response."""
     try:
-        return await message.edit_text(text, **kwargs)
+        await message.edit_text(text, **kwargs)
+        return True
     except TelegramBadRequest as error:
         if 'message is not modified' not in error.message.lower():
             raise
-        return None
+        return False
 
 
 def format_boost_result(result):
@@ -572,7 +573,7 @@ async def cb_main(callback: CallbackQuery, state: FSMContext):
     status = flipper_engine.get_status_summary()
     text = format_dashboard_text(status, callback.from_user.id)
     kb = main_dashboard_keyboard(status)
-    await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    await edit_text_if_changed(callback.message, text, reply_markup=kb, parse_mode="HTML")
     await callback.answer()
 
 
@@ -581,8 +582,8 @@ async def cb_refresh_dash(callback: CallbackQuery):
     status = flipper_engine.get_status_summary()
     text = format_dashboard_text(status, callback.from_user.id)
     kb = main_dashboard_keyboard(status)
-    await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
-    await callback.answer("🔄 Данные обновлены")
+    changed = await edit_text_if_changed(callback.message, text, reply_markup=kb, parse_mode="HTML")
+    await callback.answer("🔄 Данные обновлены" if changed else "Данные без изменений")
 
 
 @router.callback_query(F.data == "flip_pnl")
@@ -591,7 +592,7 @@ async def cb_pnl(callback: CallbackQuery):
     goal = db.get_goal_progress(callback.from_user.id)
     text = format_pnl_text(pnl, goal)
     kb = pnl_keyboard()
-    await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    await edit_text_if_changed(callback.message, text, reply_markup=kb, parse_mode="HTML")
     await callback.answer()
 
 
@@ -611,7 +612,7 @@ async def cb_inventory(callback: CallbackQuery):
             text += f"\n<b>{idx}.</b> [{c_name}] {item.get('title', '')[:25]}...\n   • Статус: {st_str} | {item['buy_price']} ➔ {item['sell_price']} ₽\n"
 
     kb = inventory_keyboard(items)
-    await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    await edit_text_if_changed(callback.message, text, reply_markup=kb, parse_mode="HTML")
     await callback.answer()
 
 
@@ -641,7 +642,7 @@ async def cb_item_detail(callback: CallbackQuery):
         f"👤 Покупатель: <code>{item.get('buyer_username') or '—'}</code>\n"
     )
     kb = item_detail_keyboard(item_uuid)
-    await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    await edit_text_if_changed(callback.message, text, reply_markup=kb, parse_mode="HTML")
     await callback.answer()
 
 
@@ -675,7 +676,7 @@ async def cb_boost_menu(callback: CallbackQuery):
         f"• Статус Турбо: <b>{turbo_status}</b>\n"
         f"• Следующее авто-поднятие: <b>{raise_str}</b>"
     )
-    await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    await edit_text_if_changed(callback.message, text, reply_markup=kb, parse_mode="HTML")
     await callback.answer()
 
 
@@ -700,7 +701,7 @@ async def cb_toggle_turbo(callback: CallbackQuery):
     state_str = "ВКЛЮЧЕН ⚡ (6 сек)" if val else "ВЫКЛЮЧЕН ⏳ (25 сек)"
     await callback.answer(f"Турбо-режим: {state_str}", show_alert=True)
     status = flipper_engine.get_status_summary()
-    await callback.message.edit_text(format_dashboard_text(status, callback.from_user.id), reply_markup=main_dashboard_keyboard(status), parse_mode="HTML")
+    await edit_text_if_changed(callback.message, format_dashboard_text(status, callback.from_user.id), reply_markup=main_dashboard_keyboard(status), parse_mode="HTML")
 
 
 @router.callback_query(F.data == "flip_browser")
@@ -724,7 +725,7 @@ async def cb_goal_menu(callback: CallbackQuery):
     goal_data = db.get_goal_progress(callback.from_user.id)
     text = format_goal_text(goal_data)
     kb = goal_keyboard(goal_data["goal"])
-    await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    await edit_text_if_changed(callback.message, text, reply_markup=kb, parse_mode="HTML")
     await callback.answer()
 
 
@@ -743,7 +744,7 @@ async def cb_set_goal_preset(callback: CallbackQuery):
     await callback.answer(f"🎯 Цель установлена: {format_goal_amount(amount)} ₽", show_alert=True)
     goal_data = db.get_goal_progress(callback.from_user.id)
     kb = goal_keyboard(goal_data["goal"])
-    await callback.message.edit_text(format_goal_text(goal_data), reply_markup=kb, parse_mode="HTML")
+    await edit_text_if_changed(callback.message, format_goal_text(goal_data), reply_markup=kb, parse_mode="HTML")
 
 
 @router.callback_query(F.data == "flip_custom_goal")
@@ -754,7 +755,7 @@ async def cb_custom_goal_prompt(callback: CallbackQuery, state: FSMContext):
 
     await state.set_state(GoalInputState.waiting_for_goal)
     kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="« Отмена", callback_data="flip_goal")]])
-    await callback.message.edit_text("✍️ <b>Введите желаемую цель прибыли в рублях:</b>\nНапример: <code>15000</code>", reply_markup=kb, parse_mode="HTML")
+    await edit_text_if_changed(callback.message, "✍️ <b>Введите желаемую цель прибыли в рублях:</b>\nНапример: <code>15000</code>", reply_markup=kb, parse_mode="HTML")
     await callback.answer()
 
 
@@ -794,7 +795,7 @@ async def cb_emergency_stop(callback: CallbackQuery):
         "Для возобновления нажмите кнопку ниже:"
     )
     kb = emergency_stop_keyboard()
-    await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    await edit_text_if_changed(callback.message, text, reply_markup=kb, parse_mode="HTML")
     await callback.answer("🛑 Экстренный СТОП выполнен!", show_alert=True)
 
 
@@ -812,7 +813,7 @@ async def cb_resume(callback: CallbackQuery):
         alert_msg += f"\n⚠️ Сверка: {unresolved_count} незавершенных платежей UNKNOWN!"
     await callback.answer(alert_msg, show_alert=True)
     status = flipper_engine.get_status_summary()
-    await callback.message.edit_text(format_dashboard_text(status, callback.from_user.id), reply_markup=main_dashboard_keyboard(status), parse_mode="HTML")
+    await edit_text_if_changed(callback.message, format_dashboard_text(status, callback.from_user.id), reply_markup=main_dashboard_keyboard(status), parse_mode="HTML")
 
 
 @router.callback_query(F.data == "flip_mode_menu")
@@ -831,7 +832,7 @@ async def cb_mode_menu(callback: CallbackQuery):
         "• <b>PAUSED:</b> Полная приостановка всех торговых операций.\n\n"
         f"Текущий режим: <code>{current_mode}</code>"
     )
-    await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    await edit_text_if_changed(callback.message, text, reply_markup=kb, parse_mode="HTML")
     await callback.answer()
 
 
@@ -853,7 +854,7 @@ async def cb_set_mode(callback: CallbackQuery):
         "• <b>PAUSED:</b> Полная приостановка всех торговых операций.\n\n"
         f"Текущий режим: <code>{new_mode}</code>"
     )
-    await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    await edit_text_if_changed(callback.message, text, reply_markup=kb, parse_mode="HTML")
 
 
 @router.callback_query(F.data == "flip_settings")
@@ -871,7 +872,7 @@ async def cb_settings_menu(callback: CallbackQuery):
         f"• <b>Доп. лимит покупки (0 = авто):</b> <code>{int(status['max_budget'])} ₽</code>\n"
         f"• <b>Минимальный профит:</b> <code>{int(status['min_profit'])} ₽</code>\n"
     )
-    await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    await edit_text_if_changed(callback.message, text, reply_markup=kb, parse_mode="HTML")
     await callback.answer()
 
 
@@ -914,7 +915,7 @@ async def cb_edit_budget(callback: CallbackQuery):
         "Бот не покупает аккаунты дороже этой суммы.\n\n"
         "Выберите сумму:"
     )
-    await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    await edit_text_if_changed(callback.message, text, reply_markup=kb, parse_mode="HTML")
     await callback.answer()
 
 
@@ -928,7 +929,7 @@ async def cb_preset_budget(callback: CallbackQuery):
     flipper_engine.set_max_budget(val)
     await callback.answer(f"✅ Бюджет: {int(val)} ₽", show_alert=True)
     status = flipper_engine.get_status_summary()
-    await callback.message.edit_text(format_dashboard_text(status, callback.from_user.id), reply_markup=main_dashboard_keyboard(status), parse_mode="HTML")
+    await edit_text_if_changed(callback.message, format_dashboard_text(status, callback.from_user.id), reply_markup=main_dashboard_keyboard(status), parse_mode="HTML")
 
 
 @router.callback_query(F.data == "flip_custom_budget")
@@ -939,7 +940,7 @@ async def cb_custom_budget_prompt(callback: CallbackQuery, state: FSMContext):
 
     await state.set_state(BudgetInputState.waiting_for_budget)
     kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="« Отмена", callback_data="flip_settings")]])
-    await callback.message.edit_text("✍️ <b>Введите лимит бюджета на выкуп в рублях:</b>\nНапример: <code>350</code>", reply_markup=kb, parse_mode="HTML")
+    await edit_text_if_changed(callback.message, "✍️ <b>Введите лимит бюджета на выкуп в рублях:</b>\nНапример: <code>350</code>", reply_markup=kb, parse_mode="HTML")
     await callback.answer()
 
 
@@ -974,7 +975,7 @@ async def cb_edit_profit(callback: CallbackQuery, state: FSMContext):
 
     await state.set_state(ProfitInputState.waiting_for_profit)
     kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="« Отмена", callback_data="flip_settings")]])
-    await callback.message.edit_text("✍️ <b>Введите минимальный чистый профит со сделки в рублях:</b>\nНапример: <code>150</code>", reply_markup=kb, parse_mode="HTML")
+    await edit_text_if_changed(callback.message, "✍️ <b>Введите минимальный чистый профит со сделки в рублях:</b>\nНапример: <code>150</code>", reply_markup=kb, parse_mode="HTML")
     await callback.answer()
 
 
@@ -1009,7 +1010,7 @@ async def cb_edit_key_prompt(callback: CallbackQuery, state: FSMContext):
 
     await state.clear()
     kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="« Назад в настройки", callback_data="flip_settings")]])
-    await callback.message.edit_text(
+    await edit_text_if_changed(callback.message,
         "🔑 <b>Настройка Golden Key для FunPay</b>\n\n"
         "Секрет задаётся исключительно локально через переменную окружения <code>FUNPAY_GOLDEN_KEY</code> "
         "(в файле <code>.env</code> или окружении системы).\n\n"
@@ -1042,7 +1043,7 @@ async def cb_categories_menu(callback: CallbackQuery):
     medians = flipper_engine.category_medians
     text = format_categories_text(enabled, medians)
     kb = categories_keyboard(enabled)
-    await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    await edit_text_if_changed(callback.message, text, reply_markup=kb, parse_mode="HTML")
     await callback.answer()
 
 
@@ -1065,7 +1066,7 @@ async def cb_toggle_category(callback: CallbackQuery):
     medians = flipper_engine.category_medians
     text = format_categories_text(enabled, medians)
     kb = categories_keyboard(enabled)
-    await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    await edit_text_if_changed(callback.message, text, reply_markup=kb, parse_mode="HTML")
 
 
 @router.callback_query(F.data == "flip_cat_enable_all")
@@ -1083,7 +1084,7 @@ async def cb_enable_all_categories(callback: CallbackQuery):
     medians = flipper_engine.category_medians
     text = format_categories_text(enabled, medians)
     kb = categories_keyboard(enabled)
-    await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    await edit_text_if_changed(callback.message, text, reply_markup=kb, parse_mode="HTML")
 
 
 @router.callback_query(F.data == "flip_pnl_categories")
@@ -1091,5 +1092,5 @@ async def cb_pnl_categories(callback: CallbackQuery):
     pnl = db.get_pnl_stats()
     text = format_pnl_by_categories_text(pnl)
     kb = pnl_categories_keyboard()
-    await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    await edit_text_if_changed(callback.message, text, reply_markup=kb, parse_mode="HTML")
     await callback.answer()

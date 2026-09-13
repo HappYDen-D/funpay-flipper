@@ -13,12 +13,20 @@ from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urljoin, urlsplit
 
 import httpx
-from auto_flipper.funpay_transport import proxy_options, response_problem, safe_error
+from auto_flipper.funpay_transport import (
+    FunPayMarketGetPacer,
+    proxy_options,
+    response_problem,
+    safe_error,
+)
 
 from auto_flipper.config import (
     ARBITRAGE_MAX_BUDGET_DEFAULT,
     DEFAULT_HEADERS,
     FUNPAY_BASE_URL,
+    FUNPAY_MARKET_GET_429_BACKOFF_SECONDS,
+    FUNPAY_MARKET_GET_JITTER_SECONDS,
+    FUNPAY_MARKET_GET_MIN_INTERVAL_SECONDS,
     FUNPAY_GOLDEN_KEY,
     FUNPAY_ORDERS_CHECKOUT_URL,
     FUNPAY_ORDERS_TRADE_URL,
@@ -50,6 +58,13 @@ class FunPayClient:
         self._order_node_cache: Dict[str, int] = {}
         self._proxy_url = os.environ.get("FUNPAY_PROXY", "").strip()
         self.last_transport_issue = None
+        self.last_market_scan_nodes = None
+        self.last_market_scan_failed_nodes: Dict[int, str] = {}
+        self.market_get_pacer = FunPayMarketGetPacer(
+            FUNPAY_MARKET_GET_MIN_INTERVAL_SECONDS,
+            FUNPAY_MARKET_GET_JITTER_SECONDS,
+            FUNPAY_MARKET_GET_429_BACKOFF_SECONDS,
+        )
 
     def __repr__(self) -> str:
         key_status = "set" if self.golden_key else "empty"
@@ -65,6 +80,10 @@ class FunPayClient:
         message = safe_error(error, self._proxy_url, self.golden_key)
         self.last_transport_issue = message
         return message
+
+    async def _paced_market_get(self, client, url: str):
+        """One shared gate for legacy and account-category market GETs."""
+        return await self.market_get_pacer.request(lambda: client.get(url))
 
     def _response_problem(self, response):
         problem = response_problem(response)
@@ -1148,31 +1167,39 @@ class FunPayClient:
 
         all_lots: List[Dict[str, Any]] = []
         seen_ids = set()
+        successful_nodes = set()
+        failed_nodes: Dict[int, str] = {}
 
         try:
             async with self._http_client(follow_redirects=True) as client:
                 for node in node_ids:
                     url = f"{FUNPAY_BASE_URL}/lots/{node}/"
                     try:
-                        resp = await client.get(url)
+                        resp = await self._paced_market_get(client, url)
                         problem = self._response_problem(resp)
                         if problem:
                             logger.warning("FunPay market request blocked: %s", problem)
+                            failed_nodes[int(node)] = problem
                             break
                         if resp.status_code == 200:
                             lots = self.parse_lots(resp.text, node_id=node,
                                                    include_unknown_currency=observation_only)
+                            successful_nodes.add(int(node))
                             for lot in lots:
                                 if lot["lot_id"] not in seen_ids:
                                     seen_ids.add(lot["lot_id"])
                                     all_lots.append(lot)
                         else:
+                            failed_nodes[int(node)] = f"HTTP_{resp.status_code}"
                             logger.warning(f"FunPay returned HTTP {resp.status_code} for node {node}")
                     except Exception as e:
+                        failed_nodes[int(node)] = type(e).__name__
                         logger.debug(f"Error fetching FunPay lots for node {node}: {self._safe_error(e)}")
         except Exception as e:
             logger.error(f"Error in fetch_market_lots: {self._safe_error(e)}")
 
+        self.last_market_scan_nodes = successful_nodes
+        self.last_market_scan_failed_nodes = failed_nodes
         return all_lots
 
     async def fetch_account_market_lots(self, node_id: int) -> List[Dict[str, Any]]:
@@ -1223,7 +1250,8 @@ class FunPayClient:
         status = None
         try:
             async with self._http_client(follow_redirects=True) as client:
-                response = await client.get(f"{FUNPAY_BASE_URL}/lots/{int(node_id)}/")
+                response = await self._paced_market_get(
+                    client, f"{FUNPAY_BASE_URL}/lots/{int(node_id)}/")
             status = response.status_code
             problem = self._response_problem(response)
             if problem or response.status_code != 200:

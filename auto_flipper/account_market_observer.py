@@ -38,8 +38,10 @@ from auto_flipper.config import (
     ACCOUNT_MIN_PARSEABLE_RATIO,
     ACCOUNT_RISK_EVIDENCE_HIGH_RATIO,
     ACCOUNT_RISK_EVIDENCE_MEDIUM_RATIO,
+    ACCOUNT_SAMPLE_INTERVAL_SECONDS,
     ACCOUNT_SELECTION_CONFIRM_SAMPLES,
     ACCOUNT_SELECTION_HYSTERESIS_POINTS,
+    ACCOUNT_SNAPSHOT_MIN_PREVIOUS_RATIO,
     MAX_ACTIVE_ACCOUNT_MARKETS,
 )
 from auto_flipper.account_snapshot import AccountMarketSnapshot, SnapshotQuality
@@ -68,6 +70,8 @@ class AccountMarketConfig:
     failure_backoff_max_seconds: float = ACCOUNT_FAILURE_BACKOFF_MAX_SECONDS
     risk_evidence_medium_ratio: float = ACCOUNT_RISK_EVIDENCE_MEDIUM_RATIO
     risk_evidence_high_ratio: float = ACCOUNT_RISK_EVIDENCE_HIGH_RATIO
+    sample_interval_seconds: float = ACCOUNT_SAMPLE_INTERVAL_SECONDS
+    stable_min_previous_ratio: float = ACCOUNT_SNAPSHOT_MIN_PREVIOUS_RATIO
     medium_min_hours: float = 1.0
     medium_min_samples: int = 12
     high_min_hours: float = 6.0
@@ -113,12 +117,16 @@ class AccountMarketMetrics:
     scan_age_seconds: Optional[float] = None
     scan_duration: float = 0.0
     complete_sample_count: int = 0
+    successful_sample_count: int = 0
+    complete_observation_duration_hours: float = 0.0
+    turnover_confidence: str = "NONE"
 
 
 @dataclass(frozen=True)
 class MarketObservationPriorityScore:
     score: float
     components: Dict[str, float]
+    availability: Dict[str, str]
 
 
 @dataclass(frozen=True)
@@ -145,6 +153,7 @@ class AccountMarketAssessment:
     priority: MarketObservationPriorityScore
     risk: AccountMarketRiskScore
     confidence: str
+    turnover_confidence: str
     eligible: bool
     eligibility_failures: Tuple[str, ...]
     future_flip_eligibility: str
@@ -171,17 +180,67 @@ def _sat_log(value: float, target: float) -> float:
 
 
 def _confidence(metrics: AccountMarketMetrics, cfg: AccountMarketConfig) -> str:
-    if metrics.snapshot_quality != SnapshotQuality.COMPLETE.value:
-        return "LOW"
-    if metrics.observation_duration_hours >= cfg.high_min_hours and metrics.complete_sample_count >= cfg.high_min_samples:
+    if metrics.observation_duration_hours >= cfg.high_min_hours and metrics.successful_sample_count >= cfg.high_min_samples:
         return "HIGH"
-    if metrics.observation_duration_hours >= cfg.medium_min_hours and metrics.complete_sample_count >= cfg.medium_min_samples:
+    if metrics.observation_duration_hours >= cfg.medium_min_hours and metrics.successful_sample_count >= cfg.medium_min_samples:
         return "MEDIUM"
     return "LOW"
 
 
+def _turnover_confidence(metrics: AccountMarketMetrics, cfg: AccountMarketConfig) -> str:
+    """Only complete snapshots can establish absence-based turnover evidence."""
+    if metrics.complete_sample_count == 0:
+        return "NONE"
+    if (metrics.complete_observation_duration_hours >= cfg.high_min_hours
+            and metrics.complete_sample_count >= cfg.high_min_samples):
+        return "HIGH"
+    if (metrics.complete_observation_duration_hours >= cfg.medium_min_hours
+            and metrics.complete_sample_count >= cfg.medium_min_samples):
+        return "MEDIUM"
+    return "LOW"
+
+
+def _stable_successful_samples(samples, market_id: str, node_id: int,
+                               cfg: AccountMarketConfig):
+    """Return successful samples whose visible window is stable enough to compare."""
+    stable = []
+    parsed_baseline = []
+    coverage_baseline = []
+    for sample in reversed(samples):
+        try:
+            metadata = json.loads(sample.get("metrics_json") or "{}")
+        except (TypeError, ValueError):
+            metadata = {}
+        quality = metadata.get("snapshot_quality", SnapshotQuality.COMPLETE.value)
+        if quality == SnapshotQuality.FAILED.value:
+            continue
+        if not metadata.get("fetch_success", True) or not metadata.get("parse_success", True):
+            continue
+        if str(sample.get("market_id")) != market_id or int(metadata.get("node_id", node_id)) != node_id:
+            continue
+        parsed_count = int(metadata.get("parsed_count", sample.get("active_lots") or 0))
+        coverage = metadata.get("coverage_ratio")
+        if parsed_count < cfg.min_active_lots:
+            continue
+        if parsed_baseline:
+            usual_parsed = statistics.median(parsed_baseline[-20:])
+            if parsed_count < usual_parsed * cfg.stable_min_previous_ratio:
+                continue
+        if coverage is not None and coverage_baseline:
+            usual_coverage = statistics.median(coverage_baseline[-20:])
+            if float(coverage) < usual_coverage * cfg.stable_min_previous_ratio:
+                continue
+        stable.append(sample)
+        parsed_baseline.append(parsed_count)
+        if coverage is not None:
+            coverage_baseline.append(float(coverage))
+    return stable
+
+
 def compute_account_market_metrics(db, market_id: str, now: Optional[float] = None,
-                                   cheap_rub_threshold: float = ACCOUNT_CHEAP_RUB_THRESHOLD) -> AccountMarketMetrics:
+                                   cheap_rub_threshold: float = ACCOUNT_CHEAP_RUB_THRESHOLD,
+                                   config: Optional[AccountMarketConfig] = None) -> AccountMarketMetrics:
+    cfg = config or AccountMarketConfig(cheap_rub_threshold=cheap_rub_threshold)
     now_ts = time.time() if now is None else float(now)
     scans = db.get_account_market_scans(market_id, limit=500)
     latest_scan = scans[0] if scans else None
@@ -194,14 +253,16 @@ def compute_account_market_metrics(db, market_id: str, now: Optional[float] = No
     all_lots = db.get_account_market_lots(market_id, active_only=False)
     events = db.get_account_market_events(market_id)
     samples = db.get_account_market_samples(market_id, limit=500)
-    complete_samples = 0
+    complete_samples = []
     for sample in samples:
         try:
             sample_meta = json.loads(sample.get("metrics_json") or "{}")
         except (TypeError, ValueError):
             sample_meta = {}
         if sample_meta.get("snapshot_quality", "COMPLETE") == "COMPLETE":
-            complete_samples += 1
+            complete_samples.append(sample)
+    node_id = int(ACCOUNT_MARKET_SEEDS[market_id]["node_id"])
+    stable_samples = _stable_successful_samples(samples, market_id, node_id, cfg)
     seller_counts = Counter(str(lot.get("seller") or "Unknown") for lot in lots)
     active_count = len(lots)
     shares = sorted((count / active_count for count in seller_counts.values()), reverse=True) if active_count else []
@@ -222,10 +283,12 @@ def compute_account_market_metrics(db, market_id: str, now: Optional[float] = No
             p10, p50, p90 = compute_quantile(prices, .10), compute_quantile(prices, .50), compute_quantile(prices, .90)
             dispersions.append((p90 - p10) / max(.01, p50))
             well_priced_lots += len(prices)
-    first_times = [float(lot["first_seen_at"]) for lot in all_lots]
-    sample_times = [float(sample["timestamp"]) for sample in samples]
-    first_seen = min(first_times + sample_times) if first_times or sample_times else now_ts
-    duration_hours = max(0.0, (now_ts - first_seen) / 3600.0)
+    stable_times = [float(sample["timestamp"]) for sample in stable_samples]
+    duration_hours = ((max(stable_times) - min(stable_times)) / 3600.0
+                      if len(stable_times) >= 2 else 0.0)
+    complete_times = [float(sample["timestamp"]) for sample in complete_samples]
+    complete_duration = ((max(complete_times) - min(complete_times)) / 3600.0
+                         if len(complete_times) >= 2 else 0.0)
     event_counts = Counter(event["event_type"] for event in events)
     oldest_sample_active = int(samples[-1]["active_lots"]) if samples else 0
     replacement_new_count = max(0, event_counts["NEW"] - oldest_sample_active)
@@ -251,7 +314,9 @@ def compute_account_market_metrics(db, market_id: str, now: Optional[float] = No
         reappearance_count=reappearance, price_change_count=event_counts["PRICE_CHANGE"],
         disappearance_rate=disappearance / rate_denominator, reappearance_rate=reappearance / rate_denominator,
         reappearance_ratio=reappearance / max(1, disappearance),
-        listing_churn_rate=(replacement_new_count + disappearance + event_counts["PRICE_CHANGE"]) / rate_denominator,
+        # Price/stock updates are safe positive evidence, not absence-based
+        # turnover. NEW/DISAPPEARED are emitted only by COMPLETE scans.
+        listing_churn_rate=(replacement_new_count + disappearance) / rate_denominator,
         average_lifetime_hours=round(average_lifetime, 4),
         median_cohort_dispersion=float(statistics.median(dispersions)) if dispersions else 0.0,
         well_priced_cohort_coverage=well_priced_lots / max(1, priced_classified_lots),
@@ -261,7 +326,9 @@ def compute_account_market_metrics(db, market_id: str, now: Optional[float] = No
         snapshot_quality=latest_scan["snapshot_quality"] if latest_scan else "FAILED",
         scan_age_seconds=max(0.0, now_ts - float(latest_scan["started_at"])) if latest_scan else None,
         scan_duration=float(latest_scan["scan_duration"]) if latest_scan else 0.0,
-        complete_sample_count=complete_samples,
+        complete_sample_count=len(complete_samples),
+        successful_sample_count=len(stable_samples),
+        complete_observation_duration_hours=round(complete_duration, 4),
     )
 
 
@@ -278,7 +345,7 @@ def evaluate_market_observation_priority(metrics: AccountMarketMetrics) -> Marke
     cohort_count_quality = _clamp(100.0 * min(1.0, metrics.cohort_count / 20.0))
     cohort_size_quality = _clamp(100.0 * min(1.0, metrics.median_cohort_size / 20.0))
     cohortability = _clamp(.60 * metrics.parseable_ratio * 100 + .20 * cohort_count_quality + .20 * cohort_size_quality)
-    if metrics.sample_count < 2:
+    if metrics.turnover_confidence == "NONE" or metrics.sample_count < 2:
         turnover = 0.0
     else:
         disappear_signal = _clamp(100.0 * (1.0 - math.exp(-metrics.disappearance_rate / 10.0)))
@@ -297,7 +364,9 @@ def evaluate_market_observation_priority(metrics: AccountMarketMetrics) -> Marke
     }
     score = _clamp(.25 * depth + .20 * seller_diversity + .20 * budget +
                    .15 * cohortability + .10 * turnover + .10 * price_structure)
-    return MarketObservationPriorityScore(score, components)
+    availability = {"turnover_proxy_score": ("unavailable" if metrics.turnover_confidence == "NONE"
+                                               else metrics.turnover_confidence.lower())}
+    return MarketObservationPriorityScore(score, components, availability)
 
 
 def evaluate_account_market_risk(lots: Sequence[Mapping[str, Any]], metrics: AccountMarketMetrics) -> AccountMarketRiskScore:
@@ -382,7 +451,10 @@ def assess_account_market(db, market_id: str, config: Optional[AccountMarketConf
     if market_id not in ACCOUNT_MARKET_SEEDS:
         raise ValueError("unsupported account market")
     metrics = compute_account_market_metrics(db, market_id, now=now,
-                                             cheap_rub_threshold=cfg.cheap_rub_threshold)
+                                             cheap_rub_threshold=cfg.cheap_rub_threshold,
+                                             config=cfg)
+    turnover_confidence = _turnover_confidence(metrics, cfg)
+    metrics = AccountMarketMetrics(**{**metrics.__dict__, "turnover_confidence": turnover_confidence})
     priority = evaluate_market_observation_priority(metrics)
     scans = db.get_account_market_scans(market_id, limit=100)
     latest_data_scan = next((scan for scan in scans if scan["snapshot_quality"] != "FAILED"), None)
@@ -397,7 +469,8 @@ def assess_account_market(db, market_id: str, config: Optional[AccountMarketConf
     confidence = _confidence(metrics, cfg)
     cohort_sample_sufficient = metrics.median_cohort_size >= cfg.promising_min_cohort_size
     quality_ok = metrics.median_cohort_dispersion <= cfg.promising_max_dispersion and metrics.reappearance_ratio <= cfg.promising_max_reappearance_ratio
-    if (confidence != "LOW" and risk_evidence.confidence != "LOW"
+    if (confidence != "LOW" and turnover_confidence != "NONE"
+            and risk_evidence.confidence != "LOW"
             and priority.score >= cfg.promising_min_mops and risk.score <= cfg.promising_max_risk
             and cohort_sample_sufficient and quality_ok):
         future = "PROMISING"
@@ -410,11 +483,14 @@ def assess_account_market(db, market_id: str, config: Optional[AccountMarketConf
     for key, label in (("depth_score", "market depth"), ("seller_diversity_score", "independent sellers"),
                        ("budget_accessibility_score", "budget accessibility"), ("cohortability_score", "cohort coverage"),
                        ("turnover_proxy_score", "listing churn signal"), ("price_structure_score", "within-cohort pricing")):
-        explanations.append(("+ " if c[key] >= 60 else "- ") + label + f" ({c[key]:.0f})")
+        if key == "turnover_proxy_score" and turnover_confidence == "NONE":
+            explanations.append("- listing churn signal (unavailable)")
+        else:
+            explanations.append(("+ " if c[key] >= 60 else "- ") + label + f" ({c[key]:.0f})")
     explanations.append(f"- observed account risk ({risk.score:.0f})" if risk.score >= 50 else f"+ lower observed risk ({risk.score:.0f})")
     seed = ACCOUNT_MARKET_SEEDS[market_id]
     return AccountMarketAssessment(market_id, str(seed["name"]), int(seed["node_id"]), metrics,
-                                   priority, risk, confidence, eligible, failures, future,
+                                   priority, risk, confidence, turnover_confidence, eligible, failures, future,
                                    tuple(explanations), risk_evidence)
 
 
@@ -518,6 +594,7 @@ class AccountMarketObserver:
                 )
             result = self.db.record_account_market_observation(
                 market_id, snapshot.lots, now=ts,
+                sample_interval_seconds=self.config.sample_interval_seconds,
                 snapshot_quality=snapshot.quality.value,
                 snapshot_diagnostics=snapshot.as_diagnostic(),
             )
@@ -594,7 +671,7 @@ def format_account_markets(db, selector: Optional[ActiveMarketSelector] = None,
         mode = "ACTIVE WATCH" if assessment.market_id in active else "BACKGROUND"
         lines.extend([f"{index}. <b>{assessment.name}</b>",
                       f"MOPS: {assessment.mops:.0f} | Risk: {assessment.risk_score:.0f}",
-                      f"Confidence: {assessment.confidence}",
+                      f"Observation confidence: {assessment.confidence} | Turnover confidence: {assessment.turnover_confidence}",
                       f"Active lots: {m.active_lots:,} | Sellers: {m.independent_sellers:,}",
                       f"≤{ACCOUNT_CHEAP_RUB_THRESHOLD:.0f} RUB: {m.cheap_lots:,} | Cohort coverage: {m.parseable_ratio:.0%}",
                       f"Mode: {mode}", ""])
@@ -608,7 +685,8 @@ def format_account_market_detail(db, market_id: str, now: Optional[float] = None
     coverage = f"{m.coverage_ratio:.1%}" if m.coverage_ratio is not None else "unknown"
     scan_age = f"{m.scan_age_seconds:.0f}s" if m.scan_age_seconds is not None else "unknown"
     lines = [f"<b>{a.name} — Account Market</b>", "<b>OBSERVATION ONLY</b>",
-             f"MOPS: {a.mops:.1f} | Observed risk: {a.risk_score:.1f} | Confidence: {a.confidence}",
+             f"MOPS: {a.mops:.1f} | Observed risk: {a.risk_score:.1f}",
+             f"Observation confidence: {a.confidence} | Turnover confidence: {a.turnover_confidence}",
              f"Risk evidence: {a.risk_evidence.confidence} ({a.risk_evidence.coverage_ratio:.0%})",
              f"Parsed: {m.parsed_count:,} | Advertised: {advertised} | Coverage: {coverage}",
              f"Snapshot: {m.snapshot_quality} | Scan age: {scan_age} | Duration: {m.scan_duration:.2f}s",
@@ -617,7 +695,8 @@ def format_account_market_detail(db, market_id: str, now: Optional[float] = None
              f"Cheap segment: {m.cheap_lots:,} lots, {m.cheap_independent_sellers:,} sellers",
              f"Cohort coverage: {m.parseable_ratio:.1%}; cohorts: {m.cohort_count}; median size: {m.median_cohort_size:.1f}",
              f"Largest/top-3 seller share: {m.largest_seller_share:.1%}/{m.top3_seller_share:.1%}; HHI: {m.hhi:.3f}",
-             f"Disappearances/h: {m.disappearance_rate:.2f}; reappearance ratio: {m.reappearance_ratio:.1%}",
+             ("Turnover: unavailable (no safe absence reconciliation)" if a.turnover_confidence == "NONE"
+              else f"Disappearances/h: {m.disappearance_rate:.2f}; reappearance ratio: {m.reappearance_ratio:.1%}"),
              f"MOPS components: " + ", ".join(f"{k.replace('_score','')}={v:.0f}" for k, v in a.priority.components.items()),
              f"Risk signals: {', '.join(a.risk.signals) or 'none observed'}", "", "<b>Top cohorts</b>"]
     cohorts = top_cohorts(db, market_id)
@@ -650,10 +729,13 @@ def format_account_market_summary(db, now: Optional[float] = None) -> str:
     cheap = sorted(all_cohorts, key=lambda pair: (-pair[1]["cheap_lot_count"], pair[1]["cohort_id"]))[:5]
     lines = ["<b>Account Markets — Night Summary</b>", "<b>OBSERVATION ONLY</b>",
              f"Observation duration: {duration:.2f}h | Samples: {sample_count} | Eligible: {len(eligible)}",
+             "Observation confidence: " + ", ".join(f"{a.name}={a.confidence}" for a in ranked),
+             "Turnover confidence: " + ", ".join(f"{a.name}={a.turnover_confidence}" for a in ranked),
              f"Best observation market: {ranked[0].name} ({ranked[0].mops:.0f})",
              f"Most cohortable: {by_component('cohortability_score').name}",
              f"Best budget accessibility: {by_component('budget_accessibility_score').name}",
-             f"Highest turnover proxy: {by_component('turnover_proxy_score').name}",
+             (f"Highest turnover proxy: {by_component('turnover_proxy_score').name}"
+              if any(a.turnover_confidence != "NONE" for a in ranked) else "Turnover proxy: unavailable"),
              f"Highest observed risk: {highest_risk.name} ({highest_risk.risk_score:.0f})",
              f"Lowest observed risk: {lowest_risk.name} ({lowest_risk.risk_score:.0f})", "", "Top cohorts by activity:"]
     lines.extend(f"- {name}: {row['cohort_id']} ({row['new_count'] + row['disappearance_count']} changes)" for name, row in activity)

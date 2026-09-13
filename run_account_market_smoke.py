@@ -40,7 +40,8 @@ async def main():
                 "observed_risk": assessment.risk_score,
                 "risk_evidence_coverage": assessment.risk_evidence.coverage_ratio,
                 "risk_evidence_confidence": assessment.risk_evidence.confidence,
-                "confidence": assessment.confidence,
+                "observation_confidence": assessment.confidence,
+                "turnover_confidence": assessment.turnover_confidence,
                 "eligible": assessment.eligible,
             })
         print(json.dumps({

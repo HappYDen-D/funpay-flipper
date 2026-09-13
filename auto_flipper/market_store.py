@@ -735,13 +735,16 @@ class MarketHistoryStore:
                             VALUES(?,?,?,'REAPPEARED',?,?,?,?,?)""",
                             (market_id, lot_id, result.cohort_id, old["price"], price, old["stock"], stock, ts))
                         summary["reappearance_count"] += 1
-                    if price_changed and quality == "COMPLETE":
+                    # A changed value on the same still-active lot is positive
+                    # evidence even inside a truncated window. It does not rely
+                    # on absence reconciliation.
+                    if price_changed and not reappeared:
                         conn.execute("""INSERT INTO account_market_events
                             (market_id,lot_id,cohort_id,event_type,old_price,new_price,old_stock,new_stock,timestamp)
                             VALUES(?,?,?,'PRICE_CHANGE',?,?,?,?,?)""",
                             (market_id, lot_id, result.cohort_id, old["price"], price, old["stock"], stock, ts))
                         summary["price_change_count"] += 1
-                    if stock_changed and not reappeared and quality == "COMPLETE":
+                    if stock_changed and not reappeared:
                         conn.execute("""INSERT INTO account_market_events
                             (market_id,lot_id,cohort_id,event_type,old_price,new_price,old_stock,new_stock,timestamp)
                             VALUES(?,?,?,'STOCK_CHANGE',?,?,?,?,?)""",
@@ -757,7 +760,7 @@ class MarketHistoryStore:
                          json.dumps(result.features, ensure_ascii=False, sort_keys=True),
                          json.dumps(list(result.risk_flags), ensure_ascii=False), ACCOUNT_OBSERVATION_SOURCE, ts, ts,
                           int(old["reappearance_count"]) + int(reappeared and quality == "COMPLETE"),
-                          int(old["price_change_count"]) + int(price_changed and quality == "COMPLETE"), market_id, lot_id))
+                          int(old["price_change_count"]) + int(price_changed and not reappeared), market_id, lot_id))
 
             last = conn.execute("SELECT timestamp FROM account_market_samples WHERE market_id=? ORDER BY timestamp DESC LIMIT 1",
                                 (market_id,)).fetchone()
@@ -773,6 +776,9 @@ class MarketHistoryStore:
                 classified = [r for r in active if r["classified"]]
                 metadata = {"unknown_currency_count": len(active) - len(rub), "source_type": ACCOUNT_OBSERVATION_SOURCE,
                             "purchase_eligible": False, "snapshot_quality": quality,
+                            "node_id": node_id, "parsed_count": diagnostics["parsed_count"],
+                            "fetch_success": bool(diagnostics["fetch_success"]),
+                            "parse_success": bool(diagnostics["parse_success"]),
                             "advertised_market_count": diagnostics["advertised_market_count"],
                             "coverage_ratio": diagnostics["coverage_ratio"]}
                 conn.execute("""INSERT INTO account_market_samples

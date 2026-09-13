@@ -1,4 +1,4 @@
-"""Explicit FunPay proxy configuration and safe transport diagnostics.
+"""Explicit FunPay proxy configuration, pacing, and safe diagnostics.
 
 No browser impersonation, challenge solver, retry, or direct-connect fallback.
 HTTPX proxy and challenge contracts:
@@ -6,6 +6,53 @@ https://www.python-httpx.org/advanced/proxies/
 https://www.python-httpx.org/environment_variables/
 https://developers.cloudflare.com/cloudflare-challenges/challenge-types/challenge-pages/detect-response/
 """
+import asyncio
+import random
+import time
+
+
+class FunPayMarketGetPacer:
+    """Serialize market GETs and space them across all users of one client.
+
+    The legacy scanner and AccountMarketObserver share a FunPayClient, hence
+    they also share this one pacer. A 429 extends the same global cooldown, so
+    another node cannot be requested immediately by either component.
+    """
+
+    def __init__(self, min_interval: float, jitter: float, backoff_429: float,
+                 *, clock=None, sleep=None, rng=None):
+        self.min_interval = max(0.0, float(min_interval))
+        self.jitter = max(0.0, float(jitter))
+        self.backoff_429 = max(self.min_interval, float(backoff_429))
+        self._clock = clock or time.monotonic
+        self._sleep = sleep or asyncio.sleep
+        self._rng = rng or random.Random()
+        self._next_allowed = 0.0
+        self._lock = None
+        self._loop = None
+
+    def _current_lock(self):
+        loop = asyncio.get_running_loop()
+        if self._lock is None or self._loop is not loop:
+            self._lock = asyncio.Lock()
+            self._loop = loop
+        return self._lock
+
+    async def request(self, request_callable):
+        async with self._current_lock():
+            delay = max(0.0, self._next_allowed - self._clock())
+            if delay:
+                await self._sleep(delay)
+            try:
+                response = await request_callable()
+            except Exception:
+                self._next_allowed = self._clock() + self.min_interval
+                raise
+            spacing = self.min_interval + self._rng.uniform(0.0, self.jitter)
+            if getattr(response, "status_code", None) == 429:
+                spacing = max(spacing, self.backoff_429)
+            self._next_allowed = self._clock() + spacing
+            return response
 import importlib.util
 import re
 from urllib.parse import unquote, urlsplit

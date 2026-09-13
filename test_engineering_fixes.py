@@ -1,10 +1,11 @@
 """Small offline regression set for the Gemini engineering audit."""
+import asyncio
 import os
 import tempfile
 import unittest
 from decimal import Decimal
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 _bootstrap = tempfile.TemporaryDirectory(prefix='engineering-bootstrap-')
 os.environ['FLIPPER_DB_PATH'] = str(Path(_bootstrap.name)/'bootstrap.db')
@@ -12,9 +13,15 @@ from auto_flipper.database import Database
 from auto_flipper.economics import kopecks, stored_kopecks
 from auto_flipper.flipper_engine import FlipperEngine
 from auto_flipper.funpay_client import FunPayClient
-from auto_flipper.handlers import parse_goal_amount, format_boost_result, edit_text_if_changed, cb_browser_menu
+from auto_flipper.handlers import (
+    cb_browser_menu,
+    cb_refresh_dash,
+    edit_text_if_changed,
+    format_boost_result,
+    parse_goal_amount,
+)
 from auto_flipper.bot import setup_bot_commands
-from auto_flipper.funpay_transport import proxy_options, response_problem
+from auto_flipper.funpay_transport import FunPayMarketGetPacer, proxy_options, response_problem
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.methods import EditMessageText
 import httpx
@@ -55,6 +62,82 @@ class EngineeringFixes(unittest.IsolatedAsyncioTestCase):
         message.edit_text.side_effect=TelegramBadRequest(method=method,message='Bad Request: chat not found')
         with self.assertRaises(TelegramBadRequest):
             await edit_text_if_changed(message,'same')
+
+    async def test_refresh_dashboard_duplicate_is_noop_but_other_errors_propagate(self):
+        method = EditMessageText(chat_id=42, message_id=1, text='same')
+        callback = AsyncMock()
+        callback.from_user = MagicMock(id=42)
+        callback.message = AsyncMock()
+        callback.message.edit_text.side_effect = TelegramBadRequest(
+            method=method, message='Bad Request: message is not modified')
+        with patch('auto_flipper.handlers.flipper_engine.get_status_summary', return_value={}), \
+             patch('auto_flipper.handlers.format_dashboard_text', return_value='same'), \
+             patch('auto_flipper.handlers.main_dashboard_keyboard', return_value=None):
+            await cb_refresh_dash(callback)
+        callback.answer.assert_awaited_once_with('Данные без изменений')
+
+        callback.reset_mock()
+        callback.message.edit_text.side_effect = TelegramBadRequest(
+            method=method, message='Bad Request: chat not found')
+        with patch('auto_flipper.handlers.flipper_engine.get_status_summary', return_value={}), \
+             patch('auto_flipper.handlers.format_dashboard_text', return_value='same'), \
+             patch('auto_flipper.handlers.main_dashboard_keyboard', return_value=None):
+            with self.assertRaises(TelegramBadRequest):
+                await cb_refresh_dash(callback)
+
+    async def test_shared_market_pacer_spaces_concurrent_startup_and_429(self):
+        now = [0.0]
+        sleeps = []
+
+        async def fake_sleep(delay):
+            sleeps.append(delay)
+            now[0] += delay
+
+        pacer = FunPayMarketGetPacer(2.0, 0.0, 60.0,
+                                    clock=lambda: now[0], sleep=fake_sleep)
+        request_times = []
+
+        class FakeHttpClient:
+            async def __aenter__(self):
+                return self
+            async def __aexit__(self, *args):
+                return None
+            async def get(self, url):
+                request_times.append(now[0])
+                status = 429 if '/lots/436/' in url else 200
+                return httpx.Response(status, text='')
+
+        client = FunPayClient()
+        client.market_get_pacer = pacer
+        client._http_client = lambda **kwargs: FakeHttpClient()
+        # Start the real legacy and account fetch paths together. Both must pass
+        # through the one pacer owned by this shared FunPayClient.
+        legacy = asyncio.create_task(client.fetch_market_lots([89]))
+        await asyncio.sleep(0)
+        account = asyncio.create_task(client.fetch_account_market_snapshot(436))
+        await asyncio.gather(legacy, account)
+        await client._paced_market_get(FakeHttpClient(), 'https://funpay.com/lots/147/')
+        self.assertEqual(request_times, [0.0, 2.0, 62.0])
+        self.assertEqual(sleeps, [2.0, 60.0])
+
+    async def test_legacy_429_reports_only_successfully_scanned_nodes(self):
+        requested = []
+        class FakeHttpClient:
+            async def __aenter__(self):
+                return self
+            async def __aexit__(self, *args):
+                return None
+            async def get(self, url):
+                requested.append(url)
+                return httpx.Response(429 if '/lots/1808/' in url else 200, text='')
+
+        client = FunPayClient()
+        client.market_get_pacer = FunPayMarketGetPacer(0, 0, 0)
+        client._http_client = lambda **kwargs: FakeHttpClient()
+        await client.fetch_market_lots([89, 1808, 612])
+        self.assertEqual(client.last_market_scan_nodes, {89})
+        self.assertEqual(client.last_market_scan_failed_nodes, {1808: 'HTTP_429_RATE_LIMITED'})
+        self.assertEqual(len(requested), 2)
 
     def test_explicit_proxy_and_challenge_diagnosis(self):
         self.assertEqual(proxy_options(''),{'proxy':None,'trust_env':False})

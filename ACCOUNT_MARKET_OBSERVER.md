@@ -107,11 +107,20 @@ reappearance count, and price-change count. Strict event types are `NEW`,
 Per-cohort samples contain P10/P25/P50/P75/P90, min/max, MAD, dispersion,
 sellers, cheap-lot count, and transition counts.
 
-- LOW: elapsed < 1h or fewer than 12 samples;
-- MEDIUM: elapsed >= 1h and at least 12 samples;
-- HIGH: elapsed >= 6h and at least 60 samples.
+Observation Confidence describes the accumulated price/cohort history of the
+visible window. Both COMPLETE and stable successful PARTIAL samples count;
+FAILED, structurally invalid, count-collapsed, and coverage-collapsed samples
+do not.
 
-No backfill invents night observations, and one HTTP GET can never yield HIGH.
+- LOW: elapsed < 1h or fewer than 12 stable successful samples;
+- MEDIUM: elapsed >= 1h and at least 12 stable successful samples;
+- HIGH: elapsed >= 6h and at least 60 stable successful samples.
+
+Turnover Confidence is independent. It is NONE with no complete samples, and
+can become LOW/MEDIUM/HIGH only from actual COMPLETE history. Thus stable
+truncated data can honestly reach Observation Confidence: HIGH while remaining
+Turnover Confidence: NONE. A zero turnover score with NONE is unavailable, not
+evidence of zero market activity. No backfill invents night observations.
 
 ## Snapshot integrity and runtime truncation
 
@@ -135,12 +144,13 @@ quality is fail-closed:
   count gate indicates truncation;
 - `FAILED`: transport, HTTP, structural HTML, or parser validation failed.
 
-The two thresholds are configurable. Only `COMPLETE` scans reconcile absence
-and emit transition events. `PARTIAL` scans upsert positively observed rows but
-preserve unseen active rows; `FAILED` scans do not mutate lot state. Neither
-quality creates `NEW`, `DISAPPEARED`, reappearance, price/stock events, nor
-turnover. This prevents a lot crossing the server response boundary from being
-mistaken for a disappearance.
+The two thresholds are configurable. Only COMPLETE scans reconcile absence.
+PARTIAL scans upsert positively observed rows but preserve unseen active rows;
+they never create NEW, DISAPPEARED, or REAPPEARED. If the same active lot ID is
+directly observed again, its PRICE_CHANGE and STOCK_CHANGE are safe positive
+evidence and are retained, but do not become turnover evidence. FAILED scans do
+not mutate lot state or create a sample. This prevents a lot crossing the
+server response boundary from being mistaken for a disappearance.
 
 ## Polling and selection
 
@@ -156,6 +166,12 @@ previous scan is still running. Failures are isolated per market. A timeout,
 existing rows, and applies configurable exponential backoff (default 5 to 30
 minutes) without immediate retries; other markets continue normally.
 
+Legacy market scanning and account observation use the same per-client FunPay
+market GET pacer. Requests are serialized and normally spaced by 2-2.75 seconds
+(configurable). HTTP 429 applies a shared 60-second cooldown before either
+component may request another market node, while the account scheduler also
+keeps its existing 5-30 minute per-market backoff.
+
 ## Telegram
 
 - `/accountmarkets` — ranking, MOPS, observed risk, confidence, core metrics,
@@ -165,8 +181,10 @@ minutes) without immediate retries; other markets continue normally.
 - `/accountmarkets fortnite|fn|фортнайт`;
 - `/accountmarkets summary` — only actually recorded history and top cohorts.
 
-Every detail view says `OBSERVATION ONLY` and includes parsed/advertised counts,
-coverage, snapshot quality, scan age/duration, and risk-evidence confidence.
+Every detail and summary says OBSERVATION ONLY and reports Observation
+Confidence separately from Turnover Confidence. Details also include
+parsed/advertised counts, coverage, snapshot quality, scan age/duration, and
+risk-evidence confidence.
 
 ## FutureFlipEligibility
 
@@ -174,7 +192,8 @@ coverage, snapshot quality, scan age/duration, and risk-evidence confidence.
 future Account Flip Score stage. `PROMISING` requires at least MEDIUM
 confidence, MOPS >= 60, observed risk <= 70, sufficient cohort size, acceptable
 dispersion, non-excessive reappearance, and at least MEDIUM risk-evidence
-coverage. It never authorizes BUY.
+coverage. Turnover Confidence must not be NONE; stable partial history alone
+therefore remains WATCH. It never authorizes BUY.
 
 ## Safety guarantees
 

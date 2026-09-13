@@ -1018,7 +1018,11 @@ class FlipperEngine(AssistantWorkflow):
 
         # Record market history for tracked benchmark SKUs
         try:
-            db.record_market_observation(candidate_lots, scanned_nodes=set(target_nodes))
+            confirmed_nodes = getattr(self.client, "last_market_scan_nodes", None)
+            db.record_market_observation(
+                candidate_lots,
+                scanned_nodes=set(target_nodes) if confirmed_nodes is None else set(confirmed_nodes),
+            )
         except Exception as e:
             logger.warning(f"Error recording market history observation: {e}")
 
